@@ -1,0 +1,79 @@
+.container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+}
+
+/* Left Sidebar */
+.sidebar {
+  width: 80px;
+  background-color: #7b8bbd; /* 蓝色竖条 */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.top {
+  position: relative;
+}
+
+.settingsButton {
+  font-size: 1.5em;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.dropdown {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 40px;
+  left: 0;
+  background-color: #ffffff;
+  color: #000;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  overflow: hidden;
+  width: 120px;
+  z-index: 10;
+}
+
+.dropdown div {
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.dropdown div:hover {
+  background-color: #f0f0f0;
+}
+
+.bottom {
+  margin-bottom: 10px;
+}
+
+.bottom select {
+  width: 100%;
+}
+
+/* Right Main */
+.main {
+  flex: 1;
+  background-color: #f5ebeb; /* 浅粉灰色 */
+  padding: 20px;
+}
+
+.modelSelect {
+  margin-bottom: 20px;
+}
+
+.modelSelect select {
+  padding: 5px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

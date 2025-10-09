@@ -1,0 +1,88 @@
+/* 页面背景淡灰色，铺满整个屏幕 */
+.pageWrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* 垂直居中 */
+  align-items: center;     /* 水平居中 */
+  min-height: 100vh;
+  width: 100%;
+  background-color: #f0f0f0;
+  box-sizing: border-box;
+  padding: 20px;
+}
+
+/* 标题 */
+.title {
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin-bottom: 30px;
+  color: #333; /* 标题文字颜色 */
+  text-align: center;
+}
+
+.colorful {
+  color: #4a90e2; /* 彩色文字 */
+}
+
+/* 登录卡片 */
+.card {
+  background-color: #ffffff;
+  padding: 40px 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  width: 360px;
+  text-align: left;
+}
+
+/* 表单 */
+.form {
+  display: flex;
+  flex-direction: column;
+}
+
+label {
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+input {
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 1rem;
+}
+
+button {
+  padding: 12px;
+  background-color: #4a90e2;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 底部链接 */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+}
+
+.link {
+  font-size: 0.9rem;
+  color: #4a90e2;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
