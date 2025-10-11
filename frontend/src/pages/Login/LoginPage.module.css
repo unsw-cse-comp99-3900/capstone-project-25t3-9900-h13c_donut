@@ -1,9 +1,9 @@
-/* 页面背景淡灰色，铺满整个屏幕 */
+/* Page layout */
 .pageWrap {
   display: flex;
   flex-direction: column;
-  justify-content: center; /* 垂直居中 */
-  align-items: center;     /* 水平居中 */
+  justify-content: center;
+  align-items: center;
   min-height: 100vh;
   width: 100%;
   background-color: #f0f0f0;
@@ -11,39 +11,29 @@
   padding: 20px;
 }
 
-/* 标题 */
+/* Title */
 .title {
   font-size: 2.5rem;
   font-weight: bold;
   margin-bottom: 30px;
-  color: #333; /* 标题文字颜色 */
+  color: #333;
   text-align: center;
 }
+.colorful { color: #4a90e2; }
 
-.colorful {
-  color: #4a90e2; /* 彩色文字 */
-}
-
-/* 登录卡片 */
+/* Card */
 .card {
   background-color: #ffffff;
   padding: 40px 30px;
   border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
   width: 360px;
   text-align: left;
 }
 
-/* 表单 */
-.form {
-  display: flex;
-  flex-direction: column;
-}
-
-label {
-  margin-bottom: 5px;
-  font-weight: 500;
-}
+/* Form */
+.form { display: flex; flex-direction: column; }
+label { margin-bottom: 6px; font-weight: 500; }
 
 input {
   padding: 10px;
@@ -51,38 +41,65 @@ input {
   border-radius: 6px;
   border: 1px solid #ccc;
   font-size: 1rem;
+  line-height: 1.2;
 }
 
-button {
+/* Password field with eye (no global button selectors) */
+.field { position: relative; }
+.input { width: 100%; box-sizing: border-box; margin-bottom: 0; }
+.inputWithEye { padding-right: 40px; }
+
+.eyeBtn {
+  all: unset;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #7a7a7a;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.eyeBtn:hover,
+.eyeBtn:focus,
+.eyeBtn:active { color: #555; }
+.eyeBtn svg { width: 20px; height: 20px; display: block; }
+
+/* Primary action button — always blue */
+.primaryBtn {
   padding: 12px;
   background-color: #4a90e2;
   color: #fff;
   font-size: 1rem;
-  font-weight: bold;
+  font-weight: 700;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  margin-top: 10px;
+  margin-top: 14px;
 }
-
-button:disabled {
-  opacity: 0.6;
+.primaryBtn:disabled {
+  opacity: 0.7;               /* 保持蓝色，只是稍淡一些 */
   cursor: not-allowed;
 }
 
-/* 底部链接 */
+/* Footer links */
 .footer {
   display: flex;
   justify-content: space-between;
-  margin-top: 15px;
+  margin-top: 16px;
 }
-
 .link {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #4a90e2;
   cursor: pointer;
+  text-decoration: none;       /* 你之前要求去掉下划线 */
 }
-
-.link:hover {
-  text-decoration: underline;
-}
+.link:hover { text-decoration: underline; }
