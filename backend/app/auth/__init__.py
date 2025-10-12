@@ -1,0 +1,4 @@
+"""
+Auth package initialization
+"""
+
