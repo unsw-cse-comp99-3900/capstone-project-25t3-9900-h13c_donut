@@ -1,0 +1,71 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Type checking / analysis
+.mypy_cache/
+.pytype/
+.pyright/
+.pyre/
+dmypy.json
+.dmypy.json
+
+# Editor / IDE
+.vscode/
+.idea/
+.ropeproject/
+*.code-workspace
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp
+*.log
+*.tmp
+~$*
+
+# Environment files (keep examples)
+.env
+.env.*
+!.env.example
+
+# Local Python
+.python-version
+__pypackages__/
+.tox/
+
+# Generated audio outputs
+output_*.mp3
+output_*.wav
+outputs/
+recordings/
+
+# Extra guide
+backend/tts/SPRINT1_DELIVERY.md
+backend/tts/VOICE_FIX.md
