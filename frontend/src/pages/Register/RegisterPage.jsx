@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import styles from "./LoginPage.module.css";
-import { login } from "../../api/auth";
+import styles from "./RegisterPage.module.css";
+import { register } from "../../api/auth";
 
 function EyeIcon({ open = false }) {
   return open ? (
@@ -17,33 +17,31 @@ function EyeIcon({ open = false }) {
   );
 }
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [form, setForm] = useState({ username: "", email: "", password: "" });
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+  const onChange = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
 
-  const handleSubmit = async (e) => {
+  const onConfirm = async (e) => {
     e.preventDefault();
-    if (!username || !password) {
-      alert("Please fill in both fields.");
+    const { username, email, password } = form;
+    if (!username || !email || !password) {
+      alert("Please fill in all fields.");
       return;
     }
     setLoading(true);
     try {
-      const resp = await login({ username, password });
+      const resp = await register({ username, email, password });
       if (resp.ok) {
-        // store session (mock)
-        localStorage.setItem("authToken", resp.token || "mock-token");
-        localStorage.setItem("authUserId", resp.user?.id || resp.userId || username);
-        localStorage.setItem("authUsername", resp.user?.username || username);
-        navigate("/dashboard");
+        alert(resp.message || "Registration successful.");
+        navigate("/login", { replace: true });
       } else {
-        alert(resp.message || "Login failed.");
+        alert(resp.message || "Registration failed.");
       }
     } catch (err) {
-      alert(err.message || "Unexpected error.");
+      alert(err?.message || "Unexpected error.");
     } finally {
       setLoading(false);
     }
@@ -52,28 +50,37 @@ export default function LoginPage() {
   return (
     <div className={styles.pageWrap}>
       <h1 className={styles.title}>
-        Welcome to <span className={styles.colorful}>SystemX!</span>
+        Create your <span className={styles.colorful}>SystemX</span> account
       </h1>
 
       <div className={styles.card}>
-        <form className={styles.form} onSubmit={handleSubmit}>
+        <form className={styles.form} onSubmit={onConfirm}>
           <label htmlFor="username">Username</label>
           <input
             id="username"
             placeholder="Enter your username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={form.username}
+            onChange={onChange("username")}
+          />
+
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            placeholder="Enter your email"
+            value={form.email}
+            onChange={onChange("email")}
           />
 
           <label htmlFor="password">Password</label>
-          <div className={styles.field}>
+          <div className={styles.inputGroup}>
             <input
               id="password"
-              className={`${styles.input} ${styles.inputWithEye}`}
               type={showPwd ? "text" : "password"}
               placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={form.password}
+              onChange={onChange("password")}
+              className={styles.inputWithEye}
             />
             <button
               type="button"
@@ -86,23 +93,13 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <button type="submit" className={styles.primaryBtn} disabled={loading}>
-            {loading ? "Signing In..." : "Sign In"}
-          </button>
-
-          <div className={styles.footer}>
-            <span
-              className={styles.link}
-              onClick={() => navigate("/register")}
-            >
-              Register
-            </span>
-            <span
-              className={styles.link}
-              onClick={() => navigate("/forgot-password")}
-            >
-              Forget password?
-            </span>
+          <div className={styles.actions}>
+            <button type="button" className={styles.btnGhost} onClick={() => navigate("/login")}>
+              Cancel
+            </button>
+            <button type="submit" className={styles.submitBtn} disabled={loading}>
+              {loading ? "Submitting..." : "Confirm"}
+            </button>
           </div>
         </form>
       </div>
