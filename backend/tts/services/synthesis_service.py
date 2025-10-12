@@ -220,7 +220,7 @@ class SynthesisService:
                 "bytes_b64": base64.b64encode(raw).decode("ascii"),
                 "size": len(raw),
                 "isLast": is_last,        # <--- 关键
-                "provider": "elevenlabs"  # 或根据当前实际provider填写
+                # "provider": "elevenlabs"  # 或根据当前实际provider填写
             }
             seq += 1
 
