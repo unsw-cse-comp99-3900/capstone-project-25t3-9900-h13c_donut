@@ -22,7 +22,7 @@ const ACCENTS = [
   "Chinese English",
   "India English",
 ];
-const USE_LOCAL_SPEECH = (import.meta.env.VITE_USE_LOCAL_SPEECH || "1") === "1";
+const USE_LOCAL_SPEECH = (import.meta.env.VITE_USE_LOCAL_SPEECH || "0") === "1";
 
 /** Simple eye icon */
 function EyeIcon({ open = false }) {
@@ -88,7 +88,6 @@ export default function Dashboard() {
   }, []);
 
   /** ===== model / accent ===== */
-  // 下拉框改为 Free / Paid；Paid 默认被锁，解锁后可选
   const [modelUnlocked, setModelUnlocked] = useState(() => {
     return localStorage.getItem(PAID_UNLOCK_KEY) === "1";
   });
@@ -98,7 +97,6 @@ export default function Dashboard() {
   const [selectedAccent, setSelectedAccent] = useState(ACCENTS[0]);
 
   useEffect(() => {
-    // 如果未解锁且当前选择了 paid，强制回退到 free
     if (!modelUnlocked && selectedModel === "paid") {
       setSelectedModel("free");
     }
@@ -210,14 +208,17 @@ export default function Dashboard() {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
   const currentSegIdRef = useRef(null);
+  const currentConvIdRef = useRef(null);   // 当前段落对应的会话 ID（用于收尾）
   const segAudioUrlRef = useRef(null);
   const streamRef = useRef(null);
+  const finishOnceRef = useRef(false);     // 保证每段只 finish 一次
 
   const startSegment = async () => {
     if (!activeConv) return null;
     const segId = "s_" + Date.now();
     currentSegIdRef.current = segId;
     segAudioUrlRef.current = null;
+    finishOnceRef.current = false;
 
     setConvos((prev) =>
       prev.map((c) =>
@@ -241,31 +242,46 @@ export default function Dashboard() {
     return segId;
   };
 
-  const finishSegment = async () => {
-    const segId = currentSegIdRef.current;
-    if (!segId) return;
+  // —— 关键修复：允许把“最终文本”直接传进来，避免状态时序导致空白
+  const finishSegment = async (finalText) => {
+    if (finishOnceRef.current) return;
+    finishOnceRef.current = true;
 
-    const updated = convos.map((c) => {
-      if (c.id !== activeConv.id) return c;
-      const segs = (c.segments || []).map((s) =>
-        s.id === segId
-          ? { ...s, end: Date.now(), transcript: liveTranscript, audioUrl: segAudioUrlRef.current }
-          : s
-      );
-      const next = { ...c, segments: segs };
-      if ((c.segments?.length || 0) >= 1 && c.title?.startsWith("New Chat") && liveTranscript) {
-        next.title = titleFrom(liveTranscript) || c.title;
-      }
-      return next;
+    const segId = currentSegIdRef.current;
+    const convId = currentConvIdRef.current || activeId;
+    if (!segId || !convId) return;
+
+    const textToSave =
+      (typeof finalText === "string" && finalText.length > 0)
+        ? finalText
+        : (liveTranscript || "");
+
+    if (finalText && finalText !== liveTranscript) {
+      setLiveTranscript(finalText);
+    }
+
+    setConvos((prev) => {
+      return prev.map((c) => {
+        if (c.id !== convId) return c;
+        const segs = (c.segments || []).map((s) =>
+          s.id === segId
+            ? { ...s, end: Date.now(), transcript: textToSave, audioUrl: segAudioUrlRef.current }
+            : s
+        );
+        const next = { ...c, segments: segs };
+        if ((c.segments?.length || 0) >= 1 && c.title?.startsWith("New Chat") && textToSave) {
+          next.title = titleFrom(textToSave) || c.title;
+        }
+        return next;
+      });
     });
-    setConvos(updated);
 
     try {
-      await appendSegment(activeConv.id, {
+      await appendSegment(convId, {
         id: segId,
         start: Date.now() - 1,
         end: Date.now(),
-        transcript: liveTranscript,
+        transcript: textToSave,
         audioUrl: segAudioUrlRef.current,
       });
     } catch {}
@@ -273,7 +289,7 @@ export default function Dashboard() {
     setLiveTranscript("");
     setInterimText("");
     currentSegIdRef.current = null;
-    segAudioUrlRef.current = null;
+    // 不清 currentConvIdRef，兜底还能读到
   };
 
   const micStart = async () => {
@@ -285,6 +301,7 @@ export default function Dashboard() {
       setActiveId(c.id);
       convId = c.id;
     }
+    currentConvIdRef.current = convId; // 记录本段的会话 ID
     await startSegment();
 
     streamRef.current = createStreamClient({
@@ -302,19 +319,28 @@ export default function Dashboard() {
           if (final) {
             setInterimText("");
             setLiveTranscript((prev) => (prev ? prev + final : final));
+            // —— 收到最终文本后，直接携带 final 收尾，避免时序问题
+            setTimeout(() => { finishSegment(final); }, 0);
           }
         }
         if (transcriptBoxRef.current) {
           transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
         }
       },
-      onTtsStart: () => {},
+      onTtsStart: () => {
+        segAudioUrlRef.current = null;
+      },
       onTtsBlob: (blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         segAudioUrlRef.current = url;
       },
-      onTtsEnded: () => {},
+      onTtsEnded: () => {
+        // 兜底：若未收尾，这里再收一次
+        if (!finishOnceRef.current) {
+          setTimeout(() => { finishSegment(); }, 0);
+        }
+      },
       outputVolume: volume,
     });
 
@@ -328,9 +354,7 @@ export default function Dashboard() {
     setRecording(false);
     try { await streamRef.current?.stopMic?.(); } catch {}
     try { await streamRef.current?.stopSegment?.(); } catch {}
-    try { await streamRef.current?.close?.(); } catch {}
-    streamRef.current = null;
-    await finishSegment();
+    // 保持 WS 连接，让后端还能把 final 文本和 TTS 音频推回来
   };
 
   const onMicToggle = () => (recording ? micStop() : micStart());
@@ -352,7 +376,6 @@ export default function Dashboard() {
       localStorage.setItem(PAID_UNLOCK_KEY, "1");
       setUpgradeOpen(false);
       alert("Upgrade successful! Paid model unlocked.");
-      // 如果当前正好在选择 paid 被禁用的状态，允许用户选择
     } else alert("Invalid key!");
   };
 
@@ -475,7 +498,7 @@ export default function Dashboard() {
                 <span>
                   {new Date(s.start).toLocaleTimeString()} — {s.end ? new Date(s.end).toLocaleTimeString() : "…"}
                 </span>
-                {s.audioUrl && <audio controls src={s.audioUrl} className={styles.segmentAudio} />}
+                {s.audioUrl && <audio controls autoPlay src={s.audioUrl} className={styles.segmentAudio} />}
               </div>
               {s.transcript ? <div className={styles.segmentText}>{s.transcript}</div> : null}
             </div>

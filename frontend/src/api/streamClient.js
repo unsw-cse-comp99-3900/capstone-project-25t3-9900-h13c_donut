@@ -1,309 +1,274 @@
-/**
- * StreamClient — 本地占位实现（实时字幕 + 实时TTS，不重复），或 WS 接后端
- * 变更：
- * 1) 新增去重差分：只朗读/上屏“真正新增的后缀”，不会重复。
- * 2) 录音期自动压低 TTS 音量（ducking）防回声；停止后恢复。
- */
+const WS_UPLOAD_URL = import.meta.env.VITE_WS_UPLOAD_URL;
+const WS_TEXT_URL   = import.meta.env.VITE_WS_TEXT_URL;
+const WS_TTS_URL    = import.meta.env.VITE_WS_TTS_URL;
 
-export function createStreamClient(opts) {
-  const {
-    conversationId,
-    model = "modelI",
-    accent = "American English",
-    mode = "local", // "local" | "ws"
-    onText = () => {},
-    onTtsStart = () => {},
-    onTtsBlob = () => {},
-    onTtsEnded = () => {},
-    outputVolume = 1,
-  } = opts || {};
+export function createStreamClient({
+  conversationId,
+  model = "free",
+  accent = "American English",
+  onText,
+  onTtsStart,
+  onTtsBlob,
+  onTtsEnded,
+  outputVolume = 1,
+}) {
+  let uploadWS = null;
+  let textWS = null;
+  let ttsWS = null;
 
-  const USE_LOCAL = mode === "local";
+  let mediaStream = null;
+  let mediaRecorder = null;
 
-  const AUDIO_WS = import.meta.env.VITE_AUDIO_WS_URL || "";
-  const TEXT_WS  = import.meta.env.VITE_TRANSCRIPT_WS_URL || "";
+  let ttsMime = "audio/mpeg";
+  let ttsChunks = [];
+  
+  // 🔥 音频播放相关
+  let audioContext = null;
+  let audioQueue = [];
+  let isPlaying = false;
+  let currentVolume = outputVolume;
 
-  let wsAudio = null;
-  let wsText  = null;
-
-  let _outputVolume = outputVolume;
-  function setOutputVolume(v){ _outputVolume = Math.max(0, Math.min(1, v)); }
-
-  // ===== Local 状态 =====
-  let recog = null;
-  let accumFinal = "";      // 我们维护的“已确认文本”
-  let lastInterim = "";
-  let lastSpokenIndex = 0;  // 已朗读到的字符位置
-  let isRecording = false;  // 录音期 -> TTS 音量压低以防回声
-
-  // 将整段TTS录成Blob
-  let pageCaptureStream = null;
-  let pageRecorder = null;
-  let pageChunks = [];
-  let ttsPending = 0;
-
-  /** ---------- 工具：只取真正新增后缀 ---------- */
-  function normalize(s){ return (s || "").replace(/\s+/g, " ").trimStart(); }
-
-  // 从 nextFinal 中扣掉 prevFinal，考虑部分重叠（例如引擎把最后几个词重复拼接）
-  function diffSuffix(prevFinal, nextFinal){
-    prevFinal = normalize(prevFinal);
-    nextFinal = normalize(nextFinal);
-    if (!nextFinal) return "";
-
-    // 1) 完全包含：next 以 prev 为前缀
-    if (nextFinal.startsWith(prevFinal)) {
-      return nextFinal.slice(prevFinal.length);
-    }
-
-    // 2) 存在重叠：prev 的某个后缀 == next 的前缀
-    const maxOverlap = Math.min(prevFinal.length, nextFinal.length);
-    for (let k = maxOverlap; k > 0; k--) {
-      if (prevFinal.slice(prevFinal.length - k) === nextFinal.slice(0, k)) {
-        return nextFinal.slice(k);
-      }
-    }
-
-    // 3) 没有公共前缀：认为 next 全部是新增（极少发生）
-    return nextFinal;
+  function sendJSON(ws, obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
   }
 
-  /** ---------- Voice 选择（占位） ---------- */
-  function pickVoiceForAccent(accentName){
-    const langMap = {
-      "American English":  "en-US",
-      "Australia English": "en-AU",
-      "British English":   "en-GB",
-      "Chinese English":   "en-US", // 没有“中式英语”voice，用美式+轻微pitch模拟
-      "India English":     "en-IN",
-    };
-    const target = langMap[accentName] || "en-US";
-    const voices = window.speechSynthesis?.getVoices?.() || [];
-    const exact = voices.find(v => (v.lang||"").toLowerCase() === target.toLowerCase());
-    if (exact) return exact;
-    const anyEn = voices.find(v => /^en[-_]/i.test(v.lang||""));
-    return anyEn || null;
-  }
-
-  /** ---------- 朗读“新增 delta”并加入队列（录音期 ducking） ---------- */
-  function speakDelta(deltaText){
-    if (!deltaText || !("speechSynthesis" in window)) return;
-
-    let voice = pickVoiceForAccent(accent);
-    if (!voice) setTimeout(() => { voice = pickVoiceForAccent(accent); }, 120);
-
-    const u = new SpeechSynthesisUtterance(deltaText);
-
-    // 录音期自动压低音量以防回声（可调 0.15）
-    const duckFactor = isRecording ? 0.15 : 1.0;
-    u.volume = Math.max(0, Math.min(1, _outputVolume * duckFactor));
-
-    u.rate   = 1.0;
-    u.pitch  = 1.0;
-    if (voice) u.voice = voice;
-
-    if (accent === "British English")   u.pitch = 1.05;
-    if (accent === "Australia English") u.pitch = 1.02;
-    if (accent === "Chinese English")   u.pitch = 0.95;
-    if (accent === "India English")     u.pitch = 1.08;
-
-    ttsPending++;
-    if (ttsPending === 1) onTtsStart();
-
-    u.onend = () => { ttsPending = Math.max(0, ttsPending - 1); };
-    u.onerror = () => { ttsPending = Math.max(0, ttsPending - 1); };
-
-    window.speechSynthesis.speak(u);
-  }
-
-  // 新的 final 到达时：只朗读真正新增部分
-  function handleNewFinal(nextFinalAll){
-    const delta = diffSuffix(accumFinal, nextFinalAll);
-    if (!delta || !delta.trim()) return;
-    accumFinal = normalize(accumFinal + delta);
-    speakDelta(delta);
-    onText({ final: delta }); // 上层只接收新增片段，避免重复拼接
-  }
-
-  /* =======================
-   *        Local 模式
-   * ======================= */
-  async function openLocal(){ /* no-op */ }
-
-  async function closeLocal(){
-    try { recog?.stop?.(); } catch {}
-    recog = null;
-    try { pageRecorder?.stop?.(); } catch {}
-    if (pageCaptureStream) pageCaptureStream.getTracks().forEach(t => t.stop());
-    pageCaptureStream = null;
-    pageRecorder = null;
-    pageChunks = [];
-    accumFinal = "";
-    lastInterim = "";
-    lastSpokenIndex = 0;
-    ttsPending = 0;
-    isRecording = false;
-  }
-
-  async function startSegmentLocal(){
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      console.warn("This browser does not support SpeechRecognition.");
+  // 🔥 播放音频片段
+  async function playNextChunk() {
+    if (audioQueue.length === 0) {
+      isPlaying = false;
       return;
     }
 
-    // 清状态
-    accumFinal = "";
-    lastInterim = "";
-    lastSpokenIndex = 0;
-    ttsPending = 0;
-    isRecording = true;
+    isPlaying = true;
+    const chunk = audioQueue.shift();
 
-    // 捕获页面音频（录TTS）
-    pageChunks = [];
     try {
-      pageCaptureStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
-      pageRecorder = new MediaRecorder(pageCaptureStream, { mimeType: "audio/webm;codecs=opus" });
-      pageRecorder.ondataavailable = (e)=>{ if (e.data && e.data.size>0) pageChunks.push(e.data); };
-      pageRecorder.start(200);
-    } catch {
-      pageRecorder = null;
-      pageCaptureStream = null;
-    }
-
-    // 语音识别
-    recog = new SR();
-    recog.continuous = true;
-    recog.interimResults = true;
-    recog.lang = "en-US";
-
-    recog.onresult = (ev) => {
-      // 组合“这次事件里”的全部 final
-      let nextAll = "";
-      for (let i=0; i<ev.results.length; i++){
-        const r = ev.results[i];
-        if (r.isFinal) nextAll += r[0].transcript;
-      }
-      nextAll = normalize(nextAll);
-
-      // 计算真正新增并派发
-      if (nextAll && nextAll !== accumFinal) {
-        handleNewFinal(nextAll);
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
 
-      // 最新一条 interim
-      const last = ev.results[ev.results.length - 1];
-      const it = last && !last.isFinal ? (last[0]?.transcript || "") : "";
-      const nIt = normalize(it);
-      if (nIt !== lastInterim) {
-        lastInterim = nIt;
-        if (nIt) onText({ interim: nIt });
-      }
-    };
-
-    recog.onerror = (e) => console.warn("SR error:", e.error);
-    recog.onend = () => {
-      // 某些浏览器会间歇性结束，继续监听
-      try { recog.start(); } catch {}
-    };
-
-    recog.start();
-  }
-
-  async function stopSegmentLocal(){
-    isRecording = false;
-
-    try { recog?.stop?.(); } catch {}
-    recog = null;
-
-    // 等待 TTS 队列全部播完
-    await new Promise((resolve) => {
-      const check = () => {
-        if (ttsPending === 0 && !window.speechSynthesis.speaking) return resolve();
-        setTimeout(check, 120);
+      console.log("[streamClient] Decoding audio chunk:", chunk.byteLength, "bytes");
+      const audioBuffer = await audioContext.decodeAudioData(chunk.slice(0));
+      
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = currentVolume;
+      
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      source.onended = () => {
+        console.log("[streamClient] Chunk ended, playing next");
+        playNextChunk();
       };
-      check();
-    });
-
-    // 结束页面录音 -> 输出 Blob
-    let outBlob = null;
-    if (pageRecorder) {
-      await new Promise((res)=>{ pageRecorder.onstop = res; pageRecorder.stop(); });
-      if (pageChunks.length) outBlob = new Blob(pageChunks, { type: "audio/webm" });
+      
+      source.start(0);
+      console.log("[streamClient] ✅ Playing audio chunk");
+      
+    } catch (e) {
+      console.error("[streamClient] ❌ Play error:", e);
+      playNextChunk();
     }
-    if (pageCaptureStream) pageCaptureStream.getTracks().forEach(t=>t.stop());
-    pageRecorder = null;
-    pageCaptureStream = null;
-
-    onTtsBlob(outBlob || null);
-    onTtsEnded();
-
-    pageChunks = [];
-    ttsPending = 0;
   }
 
-  /* =======================
-   *        WS 模式
-   * ======================= */
-  async function openWs(){
-    if (TEXT_WS) {
-      wsText = new WebSocket(`${TEXT_WS}?conversationId=${encodeURIComponent(conversationId)}`);
-      wsText.onmessage = (evt)=>{
+  async function open() {
+    console.log("[client] createStreamClient.open() called");
+
+    // 1) 文本通道
+    await new Promise((resolve, reject) => {
+      textWS = new WebSocket(WS_TEXT_URL);
+      textWS.onopen = () => {
+        console.log("[client] textWS open, subscribe", conversationId);
+        sendJSON(textWS, { type: "subscribe", conversationId });
+        resolve();
+      };
+      textWS.onerror = (e) => { console.error("[client] textWS error", e); reject(e); };
+      textWS.onmessage = (ev) => {
+        console.log("[client] textWS message raw:", ev.data);
         try {
-          if (typeof evt.data === "string" && evt.data.startsWith("{")){
-            const obj = JSON.parse(evt.data);
-            if (obj.interim) onText({ interim: obj.interim });
-            if (obj.final)   onText({ final: obj.final });
-          } else if (typeof evt.data === "string") {
-            onText({ final: evt.data });
+          const msg = JSON.parse(ev.data);
+          if (msg?.type === "ready" || msg?.type === "pong") return;
+
+          if (msg.type === "interim") {
+            onText?.({ interim: msg.text, ts: msg.ts, confidence: msg.confidence });
+          } else if (msg.type === "final") {
+            onText?.({ final: msg.text, ts: msg.ts, confidence: msg.confidence });
+          } else {
+            console.warn("[client] textWS unknown msg:", msg);
           }
-        } catch {}
-      };
-    }
-    if (AUDIO_WS) {
-      wsAudio = new WebSocket(`${AUDIO_WS}?conversationId=${encodeURIComponent(conversationId)}&model=${encodeURIComponent(model)}&accent=${encodeURIComponent(accent)}`);
-      wsAudio.binaryType = "arraybuffer";
-      wsAudio.onmessage = (evt)=>{
-        if (evt.data instanceof ArrayBuffer){
-          const blob = new Blob([evt.data], { type: "audio/wav" });
-          onTtsBlob(blob);
-          onTtsEnded();
+        } catch (e) {
+          if (typeof ev.data === "string") onText?.(ev.data);
         }
       };
+    });
+
+    // 2) TTS 通道
+    if (WS_TTS_URL) {
+      try {
+        await new Promise((resolve, reject) => {
+          ttsWS = new WebSocket(WS_TTS_URL);
+          ttsWS.binaryType = "arraybuffer"; // 🔥 关键！
+          
+          ttsWS.onopen = () => {
+            console.log("[client] ttsWS open, subscribe", conversationId);
+            sendJSON(ttsWS, { type: "start", conversationId });
+            resolve();
+          };
+          
+          ttsWS.onerror = (e) => { 
+            console.warn("[client] ttsWS error", e); 
+            reject(e); 
+          };
+          
+          ttsWS.onmessage = (ev) => {
+            // 🔥 关键修复：正确处理二进制数据
+            if (typeof ev.data === "string") {
+              try {
+                const msg = JSON.parse(ev.data);
+                console.log("[client] ttsWS control message:", msg);
+                
+                if (msg.type === "start") {
+                  console.log("[client] 🎵 TTS stream starting");
+                  ttsMime = msg.mime || "audio/mpeg";
+                  ttsChunks = [];
+                  audioQueue = [];
+                  onTtsStart?.();
+                  
+                } else if (msg.type === "stop") {
+                  console.log("[client] 🎵 TTS stream stopped, waiting for playback");
+                  
+                  // 等待播放完成
+                  const waitForPlayback = async () => {
+                    let waitCount = 0;
+                    while ((audioQueue.length > 0 || isPlaying) && waitCount < 100) {
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                      waitCount++;
+                    }
+                    console.log("[client] 🎵 Playback finished");
+                    
+                    // 创建完整 blob
+                    const blob = new Blob(ttsChunks, { type: ttsMime });
+                    console.log("[client] 🎵 Created audio blob:", blob.size, "bytes");
+                    onTtsBlob?.(blob);
+                    onTtsEnded?.();
+                  };
+                  waitForPlayback();
+                  
+                } else if (msg.type === "ready" || msg.type === "pong") {
+                  // ignore
+                }
+              } catch {
+                // ignore
+              }
+            } 
+            // 🔥 处理二进制音频数据
+            else if (ev.data instanceof ArrayBuffer) {
+              console.log("[client] 🎵 TTS binary chunk received:", ev.data.byteLength, "bytes");
+              
+              // 保存到数组（用于最后创建完整 blob）
+              ttsChunks.push(new Uint8Array(ev.data));
+              
+              // 🔥 立即加入播放队列
+              audioQueue.push(ev.data.slice(0)); // 复制 ArrayBuffer
+              
+              // 如果还没开始播放，立即开始
+              if (!isPlaying) {
+                console.log("[client] 🎵 Starting audio playback");
+                playNextChunk();
+              }
+            } else {
+              console.warn("[client] ttsWS unknown data type:", typeof ev.data);
+            }
+          };
+        });
+      } catch (e) {
+        console.error("[client] ttsWS connection failed:", e);
+        ttsWS = null;
+      }
+    }
+
+    // 3) 上传通道
+    await new Promise((resolve, reject) => {
+      uploadWS = new WebSocket(WS_UPLOAD_URL);
+      uploadWS.onopen = () => {
+        console.log("[client] uploadWS open");
+        sendJSON(uploadWS, {
+          type: "start",
+          conversationId,
+          model,
+          accent,
+          sampleRate: 48000,
+          format: "audio/webm;codecs=opus",
+          asrProvider: "whisper",
+        });
+        resolve();
+      };
+      uploadWS.onerror = (e) => { console.error("[client] uploadWS error", e); reject(e); };
+    });
+  }
+
+  async function startSegment() {
+    // noop
+  }
+
+  async function stopSegment() {
+    if (uploadWS?.readyState === WebSocket.OPEN) {
+      console.log("[client] send stop");
+      sendJSON(uploadWS, { type: "stop" });
     }
   }
-  async function closeWs(){
-    try { wsText?.close?.(); } catch {}
-    try { wsAudio?.close?.(); } catch {}
-    wsText = null; wsAudio = null;
+
+  async function startMic() {
+    console.log("[client] requesting mic");
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[client] mic granted");
+    } catch (e) {
+      console.error("[client] getUserMedia failed:", e.name, e.message);
+      throw e;
+    }
+
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+
+    mediaRecorder = new MediaRecorder(mediaStream, {
+      mimeType: mime,
+      audioBitsPerSecond: 128000,
+    });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0 && uploadWS?.readyState === WebSocket.OPEN) {
+        console.log("[client] send audio chunk", e.data.size);
+        e.data.arrayBuffer().then((buf) => uploadWS.send(buf));
+      }
+    };
+
+    mediaRecorder.start(40);
   }
-  async function startSegmentWs(){
-    // 真实后端：这里通常会通知开始 + 你在上层用 MediaRecorder 发送 mic 分片
-    isRecording = true;
-    wsAudio?.readyState === WebSocket.OPEN && wsAudio.send(JSON.stringify({ type: "start_segment", model, accent }));
+
+  async function stopMic() {
+    try { mediaRecorder?.stop(); } catch {}
+    mediaStream?.getTracks().forEach((t) => t.stop());
+    mediaRecorder = null;
+    mediaStream = null;
   }
-  async function stopSegmentWs(){
-    isRecording = false;
-    wsAudio?.readyState === WebSocket.OPEN && wsAudio.send(JSON.stringify({ type: "end_segment" }));
-  }
-  function sendAudioChunkWs(data){
-    if (!data) return;
-    if (data instanceof Blob) {
-      data.arrayBuffer().then((buf)=> wsAudio?.readyState === WebSocket.OPEN && wsAudio.send(buf));
-    } else if (data instanceof ArrayBuffer) {
-      wsAudio?.readyState === WebSocket.OPEN && wsAudio.send(data);
+
+  async function close() {
+    try { textWS?.close(); } catch {}
+    try { ttsWS?.close(); } catch {}
+    try { uploadWS?.close(); } catch {}
+    if (audioContext) {
+      try { await audioContext.close(); } catch {}
     }
   }
 
-  // 统一导出
-  async function open()  { return USE_LOCAL ? openLocal()  : openWs(); }
-  async function close() { return USE_LOCAL ? closeLocal() : closeWs(); }
-  async function startSegment(){ return USE_LOCAL ? startSegmentLocal() : startSegmentWs(); }
-  async function stopSegment() { return USE_LOCAL ? stopSegmentLocal()  : stopSegmentWs(); }
+  function setOutputVolume(v) {
+    currentVolume = Math.max(0, Math.min(1, v));
+    console.log("[streamClient] Volume set to:", currentVolume);
+  }
 
-  async function startMic() {}
-  async function stopMic() {}
-  function sendAudioChunk(data){ if (!USE_LOCAL) sendAudioChunkWs(data); }
-
-  return { open, close, startSegment, stopSegment, startMic, stopMic, sendAudioChunk, setOutputVolume };
+  return { open, startSegment, stopSegment, startMic, stopMic, close, setOutputVolume };
 }
