@@ -7,7 +7,6 @@ python-multipart==0.0.6
 # Authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
 
 # Database
 sqlalchemy==2.0.23
@@ -28,6 +27,12 @@ librosa==0.10.1
 numpy==1.24.3
 webrtcvad==2.0.10
 
+# OpenAI for ASR
+openai
+
+# TTS Module Dependencies
+tenacity>=8.2.0
+elevenlabs>=1.0.0
+
 # Utilities
 python-json-logger==2.0.7
-

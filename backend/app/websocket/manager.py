@@ -43,7 +43,6 @@ class WebSocketManager:
         
         # Heartbeat task
         self._heartbeat_task: Optional[asyncio.Task] = None
-        self._start_heartbeat()
 
     async def connect(self, websocket: WebSocket, user_id: str, session_id: Optional[str] = None) -> bool:
         """
@@ -84,6 +83,10 @@ class WebSocketManager:
             # Register session if provided
             if session_id:
                 self.session_connections[session_id] = websocket
+            
+            # Start heartbeat task if this is the first connection
+            if len(self.active_connections) == 1:
+                self._start_heartbeat()
             
             logger.info(f"WebSocket connected: user={user_id}, session={session_id}")
             return True
@@ -283,4 +286,5 @@ class WebSocketManager:
         self.active_connections.clear()
         self.user_connections.clear()
         self.session_connections.clear()
+
 

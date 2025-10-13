@@ -67,3 +67,4 @@ async def get_current_user_websocket(token: Optional[str]) -> Dict:
             detail="Authentication failed"
         )
 
+

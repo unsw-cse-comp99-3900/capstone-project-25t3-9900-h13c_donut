@@ -16,6 +16,9 @@ from app.websocket.handlers import WebSocketHandler
 from app.auth.dependencies import get_current_user_websocket
 from app.models.responses import ErrorResponse
 
+# 导入TTS模块
+from tts.services.synthesis_service import create_synthesis_service
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,12 +29,42 @@ logger = logging.getLogger(__name__)
 # Global WebSocket manager instance
 websocket_manager = WebSocketManager()
 
+# Global TTS synthesis service instance
+tts_synthesis_service = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
+    global tts_synthesis_service
+    
     logger.info("Starting FastAPI WebSocket server...")
+    
+    # 初始化TTS服务
+    try:
+        logger.info("Initializing TTS synthesis service...")
+        tts_synthesis_service = create_synthesis_service(
+            provider=settings.TTS_DEFAULT_PROVIDER,
+            api_key=settings.ELEVENLABS_API_KEY,
+            enable_cache=settings.TTS_ENABLE_CACHE,
+            cache_ttl_seconds=settings.TTS_CACHE_TTL_SECONDS,
+        )
+        logger.info("TTS synthesis service initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize TTS service: {e}")
+        logger.warning("TTS service will not be available - falling back to mock implementation")
+        tts_synthesis_service = None
+    
     yield
+    
     logger.info("Shutting down FastAPI WebSocket server...")
+    
+    # 清理资源
+    if tts_synthesis_service:
+        try:
+            # TTS服务的清理（如果有的话）
+            logger.info("Cleaning up TTS service resources...")
+        except Exception as e:
+            logger.error(f"Error cleaning up TTS service: {e}")
 
 # Create FastAPI application
 app = FastAPI(
@@ -69,7 +102,7 @@ async def websocket_endpoint(
         session_id: Optional session ID for resuming
         token: JWT token for authentication
     """
-    handler = WebSocketHandler(websocket_manager)
+    handler = WebSocketHandler(websocket_manager, tts_synthesis_service)
     
     try:
         # Accept WebSocket connection
@@ -131,4 +164,5 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level="info"
     )
+
 

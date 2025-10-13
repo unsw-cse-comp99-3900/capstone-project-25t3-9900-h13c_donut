@@ -25,6 +25,17 @@ from app.services.tts_service import TTSService
 from app.services.audio_processor import AudioProcessor
 from app.config import settings
 
+# 导入TTS模块
+from tts.services.synthesis_service import create_synthesis_service
+from tts.utils.exceptions import (
+    TTSError, 
+    ValidationError as TTSValidationError, 
+    NetworkError, 
+    AuthenticationError,
+    RateLimitError,
+    QuotaExceededError
+)
+
 logger = logging.getLogger(__name__)
 
 class SessionState:
@@ -46,11 +57,14 @@ class WebSocketHandler:
     Handles WebSocket connections and message processing
     """
     
-    def __init__(self, websocket_manager: WebSocketManager):
+    def __init__(self, websocket_manager: WebSocketManager, tts_synthesis_service=None):
         self.websocket_manager = websocket_manager
         self.asr_service = ASRService()
-        self.tts_service = TTSService()
+        self.tts_service = TTSService()  # 保留原有的TTS服务作为备用
         self.audio_processor = AudioProcessor()
+        
+        # 使用真正的TTS模块
+        self.tts_synthesis_service = tts_synthesis_service
         
         # Active sessions: websocket -> SessionState
         self.active_sessions: Dict[WebSocket, SessionState] = {}
@@ -268,28 +282,62 @@ class WebSocketHandler:
             )
             await websocket.send_json(final_message.dict())
             
-            # Step 4: Call TTS service (batch processing)
+            # Step 4: Call TTS service using the real TTS module
             logger.info("Starting TTS processing...")
-            tts_result = await self.tts_service.synthesize_speech(
-                asr_result["text"],
-                accent=session_state.accent,
-                model=session_state.model
-            )
             
-            if not tts_result or not tts_result.get("audio_data"):
-                await self._send_error(websocket, "TTS processing failed", "TTS_ERROR")
+            try:
+                # 使用真正的TTS模块进行流式合成
+                if self.tts_synthesis_service:
+                    await self._handle_tts_streaming(websocket, asr_result["text"], session_state)
+                else:
+                    # 降级到原有TTS服务
+                    logger.warning("TTS synthesis service not available, using fallback")
+                    tts_result = await self.tts_service.synthesize_speech(
+                        asr_result["text"],
+                        accent=session_state.accent,
+                        model=session_state.model
+                    )
+                    
+                    if not tts_result or not tts_result.get("audio_data"):
+                        await self._send_error(websocket, "TTS processing failed", "TTS_ERROR")
+                        return
+                    
+                    # Send TTS chunks (simulate streaming)
+                    await self._send_tts_chunks(websocket, tts_result, session_state)
+                    
+                    # Send done message
+                    done_message = DoneMessage(
+                        sessionId=session_state.session_id,
+                        totalDuration=tts_result.get("duration"),
+                        audioUrl=tts_result.get("audio_url")
+                    )
+                    await websocket.send_json(done_message.dict())
+                
+            except TTSValidationError as e:
+                logger.error(f"TTS validation error: {e}")
+                await self._send_error(websocket, str(e), "VALIDATION_ERROR")
                 return
-            
-            # Step 5: Send TTS chunks (simulate streaming)
-            await self._send_tts_chunks(websocket, tts_result, session_state)
-            
-            # Step 6: Send done message
-            done_message = DoneMessage(
-                sessionId=session_state.session_id,
-                totalDuration=tts_result.get("duration"),
-                audioUrl=tts_result.get("audio_url")
-            )
-            await websocket.send_json(done_message.dict())
+            except AuthenticationError as e:
+                logger.error(f"TTS authentication error: {e}")
+                await self._send_error(websocket, "TTS服务认证失败，请联系管理员", "AUTH_ERROR")
+                return
+            except RateLimitError as e:
+                logger.warning(f"TTS rate limit: {e}")
+                retry_after = getattr(e, 'retry_after', 60)
+                await self._send_error(websocket, f"请求过于频繁，请{retry_after}秒后重试", "RATE_LIMIT")
+                return
+            except QuotaExceededError as e:
+                logger.error(f"TTS quota exceeded: {e}")
+                await self._send_error(websocket, "TTS配额已用完，请联系管理员", "QUOTA_EXCEEDED")
+                return
+            except NetworkError as e:
+                logger.error(f"TTS network error: {e}")
+                await self._send_error(websocket, "TTS服务暂时不可用，请稍后重试", "NETWORK_ERROR")
+                return
+            except TTSError as e:
+                logger.error(f"TTS error: {e}")
+                await self._send_error(websocket, str(e), getattr(e, 'error_code', 'TTS_ERROR'))
+                return
             
             logger.info(f"Audio processing completed for session: {session_state.session_id}")
             
@@ -383,6 +431,72 @@ class WebSocketHandler:
         except Exception as e:
             logger.error(f"Failed to send error message: {e}")
 
+    async def _handle_tts_streaming(self, websocket: WebSocket, text: str, session_state: SessionState):
+        """
+        使用TTS模块进行真正的流式合成
+        
+        Args:
+            websocket: WebSocket连接
+            text: 要合成的文本
+            session_state: 会话状态
+        """
+        try:
+            # 根据会话模式选择语音ID
+            voice_mapping = {
+                "us": "EXAVITQu4vr4xnSDxMaL",    # Sarah - 美国口音
+                "uk": "Xb7hH8MSUJpSbSDYk0k2",    # Alice - 英国口音  
+                "au": "IKne3meq5aSn9XLyUdCD",    # Charlie - 澳洲口音
+                "ca": "EXAVITQu4vr4xnSDxMaL",    # 默认使用美国口音
+                "in": "EXAVITQu4vr4xnSDxMaL"     # 默认使用美国口音
+            }
+            
+            voice_id = voice_mapping.get(session_state.accent, "EXAVITQu4vr4xnSDxMaL")
+            
+            # 验证输入
+            if not text or not text.strip():
+                await self._send_error(websocket, "文本内容不能为空", "EMPTY_TEXT")
+                return
+            
+            logger.info(f"Starting TTS streaming: text_length={len(text)}, voice_id={voice_id}")
+            
+            # 调用TTS模块的流式API
+            async for chunk in self.tts_synthesis_service.synthesize_chunked_base64(
+                text=text,
+                voice_id=voice_id,
+                chunk_bytes=settings.TTS_CHUNK_SIZE_BYTES,
+                mime="audio/mpeg"
+            ):
+                # 检查WebSocket是否仍然连接
+                from starlette.websockets import WebSocketState
+                if websocket.client_state != WebSocketState.CONNECTED:
+                    logger.warning("WebSocket已断开，停止发送TTS分块")
+                    break
+                
+                # 直接转发给前端
+                await websocket.send_json(chunk)
+                
+                # 日志记录
+                logger.debug(
+                    f"发送TTS分块: seq={chunk['seq']}, "
+                    f"size={chunk['size']}, "
+                    f"isLast={chunk['isLast']}"
+                )
+            
+            # 发送完成消息
+            done_message = DoneMessage(
+                sessionId=session_state.session_id,
+                totalDuration=None,  # TTS模块暂时不提供时长信息
+                audioUrl=None
+            )
+            await websocket.send_json(done_message.dict())
+            
+            logger.info(f"TTS流式合成完成: text_length={len(text)}")
+            
+        except Exception as e:
+            logger.error(f"TTS streaming error: {e}", exc_info=True)
+            await self._send_error(websocket, "TTS流式处理失败", "TTS_STREAMING_ERROR")
+            raise
+
     async def _cleanup_session(self, websocket: WebSocket):
         """
         Cleanup session resources
@@ -412,4 +526,5 @@ class WebSocketHandler:
             
         except Exception as e:
             logger.error(f"Error during session cleanup: {e}")
+
 

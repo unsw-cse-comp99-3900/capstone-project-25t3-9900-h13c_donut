@@ -21,14 +21,14 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from domain.interfaces import StreamingTTSClientInterface
-from domain.models import (
+from tts.domain.interfaces import StreamingTTSClientInterface
+from tts.domain.models import (
     TTSRequest,
     TTSResponse,
     VoiceInfo,
     AudioFormat,
 )
-from utils.exceptions import (
+from tts.utils.exceptions import (
     NetworkError,
     TimeoutError,
     create_http_error,

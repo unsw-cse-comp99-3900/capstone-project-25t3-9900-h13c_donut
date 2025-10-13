@@ -122,3 +122,4 @@ class AudioProcessor:
         num_samples = len(audio_data) // 2
         return num_samples / sample_rate
 
+

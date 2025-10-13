@@ -18,14 +18,14 @@ import hashlib
 import time
 import base64
 
-from domain.interfaces import TTSClientInterface, StreamingTTSClientInterface
-from domain.models import (
+from tts.domain.interfaces import TTSClientInterface, StreamingTTSClientInterface
+from tts.domain.models import (
     TTSRequest,
     TTSResponse,
     VoiceInfo,
     VoiceSettings,
 )
-from utils.exceptions import TTSError, ValidationError
+from tts.utils.exceptions import TTSError, ValidationError
 
 
 class SynthesisService:
@@ -348,7 +348,7 @@ def create_synthesis_service(
     >>> )
     """
     if provider == "elevenlabs":
-        from adapters.elevenlabs_client import ElevenLabsClient
+        from tts.adapters.elevenlabs_client import ElevenLabsClient
         
         if not api_key:
             raise ValueError("ElevenLabs provider需要提供api_key")

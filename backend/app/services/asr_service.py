@@ -20,6 +20,12 @@ class ASRService:
     """
     
     def __init__(self):
+        # BE-5 ASR服务配置
+        self.asr_service_url = settings.ASR_SERVICE_URL
+        self.asr_endpoint = settings.ASR_INTERNAL_ENDPOINT
+        self.asr_timeout = settings.ASR_TIMEOUT_SECONDS
+        
+        # 备用Whisper API配置
         self.whisper_api_url = settings.WHISPER_API_URL
         self.api_key = settings.OPENAI_API_KEY
         
@@ -124,7 +130,7 @@ class ASRService:
     
     async def _transcribe_with_local_asr(self, audio_file_path: str) -> Dict:
         """
-        Transcribe using local ASR service (placeholder for BE-5 implementation)
+        Transcribe using BE-5's ASR service
         
         Args:
             audio_file_path: Path to audio file
@@ -133,37 +139,61 @@ class ASRService:
             Transcription result
         """
         try:
-            # TODO: This will be replaced with actual call to BE-5's ASR module
-            # For now, return a mock result for testing
-            logger.info("Using local ASR service (mock implementation)")
+            logger.info(f"Calling BE-5 ASR service: {self.asr_service_url}{self.asr_endpoint}")
             
-            # Mock transcription result
-            mock_text = "This is a mock transcription result from the local ASR service."
+            # 准备文件上传
+            async with aiofiles.open(audio_file_path, 'rb') as audio_file:
+                audio_data = await audio_file.read()
             
-            return {
-                "text": mock_text,
-                "segments": [
-                    {
-                        "start": 0.0,
-                        "end": 2.0,
-                        "text": "This is a mock"
-                    },
-                    {
-                        "start": 2.0,
-                        "end": 4.5,
-                        "text": "transcription result"
-                    },
-                    {
-                        "start": 4.5,
-                        "end": 7.0,
-                        "text": "from the local ASR service."
-                    }
-                ],
-                "confidence": 0.85
+            files = {
+                'file': ('audio.wav', audio_data, 'audio/wav')
             }
             
+            # 调用BE-5的ASR服务
+            async with httpx.AsyncClient(timeout=self.asr_timeout) as client:
+                response = await client.post(
+                    f"{self.asr_service_url}{self.asr_endpoint}",
+                    files=files
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    if result.get("success"):
+                        # BE-5返回格式: {"success": True, "data": {"text": "...", "segments": [...]}}
+                        data = result.get("data", {})
+                        
+                        # 转换为我们的标准格式
+                        segments = []
+                        for seg in data.get("segments", []):
+                            segments.append({
+                                "start": seg.get("startMs", 0) / 1000.0,  # 转换毫秒到秒
+                                "end": seg.get("endMs", 0) / 1000.0,
+                                "text": seg.get("text", "")
+                            })
+                        
+                        return {
+                            "text": data.get("text", ""),
+                            "segments": segments,
+                            "confidence": 0.9  # BE-5暂时不提供confidence，使用默认值
+                        }
+                    else:
+                        # BE-5返回错误
+                        error_msg = result.get("error", {}).get("message", "Unknown error")
+                        logger.error(f"BE-5 ASR service error: {error_msg}")
+                        return self._get_fallback_result()
+                else:
+                    logger.error(f"BE-5 ASR service HTTP error: {response.status_code} - {response.text}")
+                    return self._get_fallback_result()
+                    
+        except httpx.TimeoutException:
+            logger.error(f"BE-5 ASR service timeout after {self.asr_timeout} seconds")
+            return self._get_fallback_result()
+        except httpx.ConnectError:
+            logger.error(f"Cannot connect to BE-5 ASR service at {self.asr_service_url}")
+            return self._get_fallback_result()
         except Exception as e:
-            logger.error(f"Local ASR transcription error: {e}")
+            logger.error(f"BE-5 ASR service error: {e}")
             return self._get_fallback_result()
     
     def _get_fallback_result(self) -> Dict:
@@ -187,16 +217,31 @@ class ASRService:
     
     async def check_service_health(self) -> bool:
         """
-        Check if ASR service is healthy
+        Check if BE-5's ASR service is healthy
         
         Returns:
             True if service is healthy, False otherwise
         """
         try:
-            # TODO: Implement actual health check for BE-5's ASR service
-            logger.info("ASR service health check (mock)")
-            return True
-        except Exception as e:
-            logger.error(f"ASR service health check failed: {e}")
+            logger.info(f"Checking BE-5 ASR service health: {self.asr_service_url}")
+            
+            # 尝试连接到BE-5的ASR服务
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # 可以尝试访问根路径或健康检查端点
+                response = await client.get(f"{self.asr_service_url}/")
+                
+                if response.status_code in [200, 404]:  # 404也表示服务在运行
+                    logger.info("BE-5 ASR service is healthy")
+                    return True
+                else:
+                    logger.warning(f"BE-5 ASR service returned status: {response.status_code}")
+                    return False
+                    
+        except httpx.ConnectError:
+            logger.error(f"Cannot connect to BE-5 ASR service at {self.asr_service_url}")
             return False
+        except Exception as e:
+            logger.error(f"BE-5 ASR service health check failed: {e}")
+            return False
+
 

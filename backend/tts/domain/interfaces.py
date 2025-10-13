@@ -12,7 +12,7 @@ TTS客户端抽象接口
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, List, Optional
-from domain.models import TTSRequest, TTSResponse, VoiceInfo
+from tts.domain.models import TTSRequest, TTSResponse, VoiceInfo
 
 
 class TTSClientInterface(ABC):

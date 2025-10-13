@@ -90,3 +90,4 @@ class HeartbeatResponse(WebSocketMessage):
     """Heartbeat response"""
     type: str = "pong"
 
+

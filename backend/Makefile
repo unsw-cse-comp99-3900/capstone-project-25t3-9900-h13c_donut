@@ -47,3 +47,4 @@ create-temp-dir: ## Create temporary audio directory
 init: install create-temp-dir setup-env ## Initialize project for development
 	@echo "Project initialized. Please edit .env file and run 'make dev'"
 
+

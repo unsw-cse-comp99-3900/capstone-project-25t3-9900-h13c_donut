@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     
+    # TTS Configuration (Enhanced for TTS module)
+    TTS_DEFAULT_PROVIDER: str = "elevenlabs"
+    TTS_ENABLE_CACHE: bool = True
+    TTS_CACHE_TTL_SECONDS: int = 3600
+    TTS_CHUNK_SIZE_BYTES: int = 4096
+    TTS_DEFAULT_VOICE_ID: str = "EXAVITQu4vr4xnSDxMaL"  # Sarah - US English
+    TTS_MODEL_ID: str = "eleven_multilingual_v2"
+    TTS_TIMEOUT_SECONDS: float = 20.0
+    TTS_MAX_RETRIES: int = 3
+    
     # Application Settings
     DEBUG: bool = True
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
@@ -35,7 +45,12 @@ class Settings(BaseSettings):
     WEBSOCKET_HEARTBEAT_INTERVAL: int = 30  # seconds
     MAX_CONNECTIONS_PER_USER: int = 3
     
-    # ASR Settings (Whisper API)
+    # ASR Settings (BE-5 Internal Service)
+    ASR_SERVICE_URL: str = "http://localhost:8001"  # BE-5 ASR服务地址
+    ASR_INTERNAL_ENDPOINT: str = "/internal/asr"
+    ASR_TIMEOUT_SECONDS: float = 60.0
+    
+    # ASR Settings (Whisper API - 备用)
     WHISPER_API_URL: str = "https://api.openai.com/v1/audio/transcriptions"
     WHISPER_MODEL: str = "whisper-1"
     
@@ -52,4 +67,5 @@ settings = Settings()
 
 # Ensure temp audio directory exists
 os.makedirs(settings.TEMP_AUDIO_DIR, exist_ok=True)
+
 
