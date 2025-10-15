@@ -1,5 +1,6 @@
 // src/api/auth.js
 import { mockDB } from "./mockDB";
+import * as jose from "jose";
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -13,7 +14,26 @@ export async function login({ username, password }) {
   }
   const user = mockDB.verifyLoginByUsername(username, password);
   if (!user) return { ok: false, message: "Invalid username or password" };
-  const token = "mock-token-" + user.id;
+  
+  // 生成符合后端的JWT token
+  // 注意：这必须与backend/.env中的JWT_SECRET_KEY一致
+  const JWT_SECRET = "your-super-secret-jwt-key-change-in-production-please";
+  
+  // 创建JWT payload（与后端一致）
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    username: user.username,
+    is_admin: false,
+    exp: Math.floor(Date.now() / 1000) + (60 * 60), // 1小时后过期
+  };
+  
+  // 使用jose生成真实的JWT token
+  const secret = new TextEncoder().encode(JWT_SECRET);
+  const token = await new jose.SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .sign(secret);
+  
   return {
     ok: true,
     token,

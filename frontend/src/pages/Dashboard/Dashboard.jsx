@@ -11,7 +11,7 @@ import {
   appendSegment,
   deleteConversation,
 } from "../../api/conversations";
-import { createStreamClient } from "../../api/streamClient";
+import { createRealTimeClient } from "../../api/realTimeClient";
 import { changePassword } from "../../api/auth";
 
 /** ===== Constants ===== */
@@ -212,6 +212,9 @@ export default function Dashboard() {
   const currentSegIdRef = useRef(null);
   const segAudioUrlRef = useRef(null);
   const streamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);  // 收集所有TTS chunks
+  const currentAudioRef = useRef(null);  // 当前播放的Audio对象
 
   const startSegment = async () => {
     if (!activeConv) return null;
@@ -286,50 +289,218 @@ export default function Dashboard() {
       convId = c.id;
     }
     await startSegment();
+    
+    // 清空之前的音频chunks
+    audioChunksRef.current = [];
 
-    streamRef.current = createStreamClient({
-      conversationId: convId,
-      model: selectedModel, // "free" | "paid"
-      accent: selectedAccent,
-      mode: USE_LOCAL_SPEECH ? "local" : "ws",
-      onText: (payload) => {
-        if (typeof payload === "string") {
+    // 获取JWT token
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    if (!token) {
+      alert('Please login first');
+      return;
+    }
+
+    // 创建新的Real-time客户端
+    try {
+      streamRef.current = createRealTimeClient({
+        onPartialText: (text) => {
+          setInterimText(text);
+          if (transcriptBoxRef.current) {
+            transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
+          }
+        },
+        onFinalText: (text) => {
           setInterimText("");
-          setLiveTranscript((prev) => (prev ? prev + payload : payload));
-        } else {
-          const { interim, final } = payload;
-          if (interim != null) setInterimText(interim);
-          if (final) {
-            setInterimText("");
-            setLiveTranscript((prev) => (prev ? prev + final : final));
+          setLiveTranscript((prev) => (prev ? prev + " " + text : text));
+          if (transcriptBoxRef.current) {
+            transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
+          }
+        },
+        onTTSChunk: (audioBlob, seq, isLast) => {
+          console.log(`📦 onTTSChunk: seq=${seq}, size=${audioBlob.size}, isLast=${isLast}`);
+          // 收集所有chunks
+          audioChunksRef.current.push(audioBlob);
+          
+          // 如果是最后一个chunk，合并并播放
+          if (isLast) {
+            console.log(`Received all ${audioChunksRef.current.length} chunks, merging and playing...`);
+            playCompleteAudio();
+          }
+        },
+        onDone: () => {
+          console.log('Session processing complete');
+          // 在done消息后断开连接
+          setTimeout(() => {
+            if (streamRef.current) {
+              streamRef.current.disconnect();
+              streamRef.current = null;
+              console.log('WebSocket disconnected after done');
+            }
+          }, 500); // 等待500ms确保所有音频都播放完
+        },
+        onError: (error, code) => {
+          console.error('Real-time client error:', code, error);
+          alert(`Error: ${error.message}`);
+          // 发生错误时断开连接
+          if (streamRef.current) {
+            streamRef.current.disconnect();
+            streamRef.current = null;
+          }
+        },
+        onConnected: () => {
+          console.log('WebSocket connected');
+        },
+        onDisconnected: () => {
+          console.log('WebSocket disconnected');
+        },
+      });
+
+      // 连接WebSocket
+      await streamRef.current.connect(token);
+      
+      // 初始化会话
+      await streamRef.current.initSession(selectedAccent, selectedModel);
+      
+      // 开始录音
+      console.log('Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true  // 自动增益控制，减少噪音
+        }
+      });
+      
+      console.log('Microphone access granted');
+      
+      // 检测支持的音频格式
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        console.warn('audio/webm;codecs=opus not supported, trying audio/webm');
+        mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          console.warn('audio/webm not supported, trying default');
+          mimeType = '';  // 使用默认格式
+        }
+      }
+      console.log('Using mimeType:', mimeType || 'default');
+      
+      const recorderOptions = mimeType ? { mimeType } : {};
+      const recorder = new MediaRecorder(stream, recorderOptions);
+      
+      recorder.ondataavailable = async (event) => {
+        if (event.data && event.data.size > 0) {
+          console.log(`Audio chunk: ${event.data.size} bytes`);
+          // 发送音频到服务器
+          if (streamRef.current) {
+            await streamRef.current.sendAudio(event.data);
           }
         }
-        if (transcriptBoxRef.current) {
-          transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
-        }
-      },
-      onTtsStart: () => {},
-      onTtsBlob: (blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        segAudioUrlRef.current = url;
-      },
-      onTtsEnded: () => {},
-      outputVolume: volume,
-    });
+      };
+      
+      recorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event);
+        alert('Recording error: ' + (event.error?.message || 'Unknown error'));
+      };
+      
+      // 每200ms发送一次音频数据
+      recorder.start(200);
+      mediaRecorderRef.current = recorder;
+      
+      setRecording(true);
+      console.log('Recording started successfully!');
+      
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      alert('Failed to start: ' + error.message);
+      // 清理
+      if (streamRef.current) {
+        streamRef.current.disconnect();
+        streamRef.current = null;
+      }
+    }
+  };
 
-    await streamRef.current.open();
-    await streamRef.current.startSegment();
-    await streamRef.current.startMic?.();
-    setRecording(true);
+  // 播放完整的合并音频
+  const playCompleteAudio = () => {
+    try {
+      if (audioChunksRef.current.length === 0) {
+        console.log('No audio chunks to play');
+        return;
+      }
+
+      console.log(`🔊 Merging ${audioChunksRef.current.length} audio chunks...`);
+      
+      // 合并所有chunks成一个完整的blob
+      const completeAudioBlob = new Blob(audioChunksRef.current, { type: 'audio/mpeg' });
+      console.log(`Complete audio blob size: ${completeAudioBlob.size} bytes`);
+      
+      // 保存音频URL供segment使用
+      const audioUrl = URL.createObjectURL(completeAudioBlob);
+      segAudioUrlRef.current = audioUrl;
+      
+      // 停止当前播放的音频（如果有）
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      
+      // 创建新的Audio对象
+      const audio = new Audio(audioUrl);
+      audio.volume = volume;
+      currentAudioRef.current = audio;
+      
+      audio.onended = () => {
+        console.log('✅ Complete audio finished playing');
+        currentAudioRef.current = null;
+      };
+      
+      audio.onerror = (err) => {
+        console.error('❌ Audio playback error:', err);
+        currentAudioRef.current = null;
+      };
+      
+      console.log('Playing complete audio...');
+      audio.play().then(() => {
+        console.log('✅ Audio playback started successfully');
+      }).catch(err => {
+        console.error('❌ Failed to play audio:', err);
+      });
+      
+      // 清空chunks数组，准备下次录音
+      audioChunksRef.current = [];
+      
+    } catch (error) {
+      console.error('Error in playCompleteAudio:', error);
+    }
   };
 
   const micStop = async () => {
     setRecording(false);
-    try { await streamRef.current?.stopMic?.(); } catch {}
-    try { await streamRef.current?.stopSegment?.(); } catch {}
-    try { await streamRef.current?.close?.(); } catch {}
-    streamRef.current = null;
+    
+    // 停止MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+    }
+    
+    // 发送stop消息到服务器
+    try {
+      if (streamRef.current) {
+        streamRef.current.stop();
+        console.log('Stop message sent, waiting for ASR and TTS...');
+      }
+    } catch (error) {
+      console.error('Error stopping:', error);
+    }
+    
+    // 不要立即断开连接！等待done消息
+    // WebSocket会在onDone回调中自动断开
+    // 或者用户可以手动断开
+    
     await finishSegment();
   };
 
@@ -375,6 +546,15 @@ export default function Dashboard() {
 
   const confirmLogout = () => {
     if (recording) micStop();
+    // 断开WebSocket连接
+    if (streamRef.current) {
+      try {
+        streamRef.current.disconnect();
+        streamRef.current = null;
+      } catch (e) {
+        console.error('Error disconnecting on logout:', e);
+      }
+    }
     localStorage.removeItem("authToken");
     localStorage.removeItem("authUserId");
     localStorage.removeItem("authUsername");

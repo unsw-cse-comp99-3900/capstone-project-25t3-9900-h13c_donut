@@ -2,7 +2,7 @@
 Response models for API standardization
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field#修改
 from typing import Any, Optional
 from datetime import datetime
 import uuid
@@ -10,8 +10,8 @@ import uuid
 class BaseResponse(BaseModel):
     """Base response model"""
     success: bool
-    requestId: str = str(uuid.uuid4())
-    timestamp: datetime = datetime.utcnow()
+    requestId: str = Field(default_factory=lambda: str(uuid.uuid4()))#修改
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())#修改
 
 class SuccessResponse(BaseResponse):
     """Success response model"""
@@ -28,7 +28,7 @@ class WebSocketMessage(BaseModel):
     """Base WebSocket message model"""
     type: str
     requestId: Optional[str] = None
-    timestamp: datetime = datetime.utcnow()
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())#修改
 
 class InitMessage(WebSocketMessage):
     """Initialize session message"""
@@ -65,8 +65,9 @@ class FinalTranscriptMessage(WebSocketMessage):
 class TTSChunkMessage(WebSocketMessage):
     """TTS audio chunk message"""
     type: str = "tts_chunk"
-    data: str  # Base64 encoded audio data
-    sequence: int
+    bytes_b64: str  # Base64 encoded audio data
+    seq: int  # 序列号
+    size: int  # 数据大小
     isLast: bool = False
 
 class DoneMessage(WebSocketMessage):

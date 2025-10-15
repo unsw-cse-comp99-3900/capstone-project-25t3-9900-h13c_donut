@@ -36,6 +36,8 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+*.lnk
 
 # Logs
 *.log
@@ -45,10 +47,15 @@ logs/
 .env
 .env.local
 .env.production
+backend/.env
+frontend/.env.local
 
 # Temporary files
 temp_audio/
 *.tmp
+*.wav
+*.webm
+*.mp3
 
 # Node.js (for frontend)
 node_modules/
@@ -69,3 +76,28 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+
+# Test files (optional - uncomment if you want to ignore)
+# test_*.py
+# *_test.py
+
+# Documentation (temporary)
+FIXES_APPLIED.md
+SPRINT1_DELIVERY.md
+VOICE_FIX.md
+VOICE_GUIDE.md
+MICROPHONE_FIX.md
+
+# Frontend specific
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+
+# Database (if using SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb

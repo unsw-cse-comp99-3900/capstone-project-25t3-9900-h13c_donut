@@ -256,9 +256,18 @@ class WebSocketHandler:
             # Combine all audio chunks
             combined_audio = b''.join(session_state.audio_buffer)
             
-            # Save to temporary file
-            with open(session_state.temp_audio_file, 'wb') as f:
-                f.write(combined_audio)
+            # Save to temporary file as WebM (frontend sends WebM/Opus format)
+            # Whisper API supports webm format directly, no need to convert
+            webm_file = session_state.temp_audio_file.replace('.wav', '.webm')
+            try:
+                with open(webm_file, 'wb') as f:
+                    f.write(combined_audio)
+                session_state.temp_audio_file = webm_file
+                logger.info(f"✅ Saved WebM audio: {webm_file}, size: {len(combined_audio)} bytes")
+            except Exception as e:
+                logger.error(f"Failed to save audio file: {e}")
+                await self._send_error(websocket, "Failed to save audio file", "AUDIO_SAVE_ERROR")
+                return
             
             # Step 1: Call ASR service (batch processing)
             logger.info("Starting ASR processing...")
@@ -270,6 +279,9 @@ class WebSocketHandler:
             if not asr_result or not asr_result.get("text"):
                 await self._send_error(websocket, "ASR processing failed", "ASR_ERROR")
                 return
+            
+            # Log the recognized text for debugging
+            logger.info(f"🎤 ASR recognized: '{asr_result['text']}'")
             
             # Step 2: Send partial transcripts (simulate streaming)
             await self._send_partial_transcripts(websocket, asr_result, session_state)
@@ -399,8 +411,9 @@ class WebSocketHandler:
             chunk_b64 = base64.b64encode(chunk).decode('utf-8')
             
             chunk_message = TTSChunkMessage(
-                data=chunk_b64,
-                sequence=i,
+                bytes_b64=chunk_b64,
+                seq=i,
+                size=len(chunk),
                 isLast=(i == len(chunks) - 1)
             )
             
@@ -460,12 +473,14 @@ class WebSocketHandler:
             logger.info(f"Starting TTS streaming: text_length={len(text)}, voice_id={voice_id}")
             
             # 调用TTS模块的流式API
+            chunk_count = 0
             async for chunk in self.tts_synthesis_service.synthesize_chunked_base64(
                 text=text,
                 voice_id=voice_id,
                 chunk_bytes=settings.TTS_CHUNK_SIZE_BYTES,
                 mime="audio/mpeg"
             ):
+                chunk_count += 1
                 # 检查WebSocket是否仍然连接
                 from starlette.websockets import WebSocketState
                 if websocket.client_state != WebSocketState.CONNECTED:
@@ -475,9 +490,9 @@ class WebSocketHandler:
                 # 直接转发给前端
                 await websocket.send_json(chunk)
                 
-                # 日志记录
-                logger.debug(
-                    f"发送TTS分块: seq={chunk['seq']}, "
+                # 日志记录（改为INFO级别以便调试）
+                logger.info(
+                    f"✅ 发送TTS分块: seq={chunk['seq']}, "
                     f"size={chunk['size']}, "
                     f"isLast={chunk['isLast']}"
                 )
@@ -490,7 +505,7 @@ class WebSocketHandler:
             )
             await websocket.send_json(done_message.dict())
             
-            logger.info(f"TTS流式合成完成: text_length={len(text)}")
+            logger.info(f"TTS流式合成完成: text_length={len(text)}, chunks_sent={chunk_count}")
             
         except Exception as e:
             logger.error(f"TTS streaming error: {e}", exc_info=True)
