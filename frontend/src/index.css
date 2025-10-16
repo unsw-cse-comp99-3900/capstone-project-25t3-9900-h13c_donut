@@ -6,9 +6,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: light;
+  color: #213547; /* 深色文字，适合浅色背景 */
+  background-color: #ffffff; /* 浅色背景 */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -40,7 +40,8 @@ html, body, #root {
 body {
   min-width: 320px;
   min-height: 100vh;
-  background-color: #242424; /* 默认背景色，可被页面覆盖 */
+  background-color: #ffffff; /* 浅色背景 */
+  color: #213547; /* 深色文字 */
 }
 
 /* =========================
@@ -62,7 +63,8 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: #f9f9f9;
+  color: #213547;
   cursor: pointer;
   transition: border-color 0.25s;
 }
@@ -75,17 +77,19 @@ button:focus-visible {
 }
 
 /* =========================
-   Light mode overrides
+   Dark mode overrides (如果需要的话)
 ========================= */
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    color: rgba(255, 255, 255, 0.87);
+    background-color: #242424;
   }
-  a:hover {
-    color: #747bff;
+  body {
+    background-color: #242424;
+    color: rgba(255, 255, 255, 0.87);
   }
   button {
-    background-color: #f9f9f9;
+    background-color: #1a1a1a;
+    color: rgba(255, 255, 255, 0.87);
   }
 }

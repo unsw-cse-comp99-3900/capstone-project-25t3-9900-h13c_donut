@@ -368,29 +368,37 @@ class WebSocketHandler:
         """
         segments = asr_result.get("segments", [])
         
+        logger.info(f"📤 Sending partial transcripts (segments: {len(segments)})")
+        
         if not segments:
             # If no segments, split text by sentences
             text = asr_result["text"]
             sentences = text.split('. ')
             for i, sentence in enumerate(sentences):
                 if sentence.strip():
+                    partial_text = sentence.strip() + ('.' if i < len(sentences) - 1 else '')
                     partial_message = PartialTranscriptMessage(
-                        text=sentence.strip() + ('.' if i < len(sentences) - 1 else ''),
+                        text=partial_text,
                         sequence=i
                     )
+                    logger.info(f"  📝 Partial [{i+1}/{len(sentences)}]: {partial_text[:50]}...")
                     await websocket.send_json(partial_message.dict())
-                    await asyncio.sleep(0.1)  # Small delay to simulate streaming
+                    await asyncio.sleep(0.3)  # Increased delay for better visibility
         else:
             # Use actual segments from ASR
             for i, segment in enumerate(segments):
+                segment_text = segment.get("text", "")
                 partial_message = PartialTranscriptMessage(
-                    text=segment.get("text", ""),
+                    text=segment_text,
                     sequence=i,
                     startMs=int(segment.get("start", 0) * 1000),
                     endMs=int(segment.get("end", 0) * 1000)
                 )
+                logger.info(f"  📝 Partial [{i+1}/{len(segments)}]: {segment_text[:50]}...")
                 await websocket.send_json(partial_message.dict())
-                await asyncio.sleep(0.1)  # Small delay to simulate streaming
+                await asyncio.sleep(0.3)  # Increased delay for better visibility
+        
+        logger.info(f"✅ Finished sending partial transcripts")
 
     async def _send_tts_chunks(self, websocket: WebSocket, tts_result: Dict, session_state: SessionState):
         """

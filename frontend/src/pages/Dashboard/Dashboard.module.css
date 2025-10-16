@@ -180,6 +180,7 @@
   display: grid;
   grid-template-rows: 60px 1fr 90px;
   grid-template-columns: 1fr;
+  color: #222; /* 强制使用深色文字，覆盖全局白色 */
 }
 .modelBox { align-self: start; justify-self: start; padding: 16px 24px 0; }
 .select {
@@ -201,20 +202,26 @@
   white-space: pre-wrap;
   line-height: 1.6;
   font-size: 16px;
-  color: #222;
+  color: #222 !important; /* 强制深色文字，覆盖全局样式 */
 }
-.placeholder { color: #888; }
-.segment { margin-bottom: 14px; }
+.placeholder { color: #888 !important; }
+.segment { 
+  margin-bottom: 14px;
+  color: #222 !important; /* 确保segment内所有文字可见 */
+}
 .segmentMeta {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 6px;
-  color: #666;
+  color: #666 !important;
   font-size: 13px;
 }
 .segmentAudio { height: 28px; }
-.segmentText { color: #222; }
+.segmentText { 
+  color: #222 !important; /* 强制深色文字 */ 
+  opacity: 1 !important;
+}
 .segmentLive .segmentMeta { color: #0a0; }
 
 /* bottom left: Accent */

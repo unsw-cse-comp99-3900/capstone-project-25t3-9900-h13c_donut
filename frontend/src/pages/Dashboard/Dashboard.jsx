@@ -204,11 +204,12 @@ export default function Dashboard() {
 
   /** ===== transcript / stream ===== */
   const [recording, setRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);  // 新增：正在处理ASR/TTS
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [volume, setVolume] = useState(1);
   const transcriptBoxRef = useRef(null);
   const [liveTranscript, setLiveTranscript] = useState("");
-  const [interimText, setInterimText] = useState("");
+  const liveTranscriptRef = useRef("");  // 用ref存储最新值，避免闭包问题
   const currentSegIdRef = useRef(null);
   const segAudioUrlRef = useRef(null);
   const streamRef = useRef(null);
@@ -236,7 +237,7 @@ export default function Dashboard() {
       )
     );
     setLiveTranscript("");
-    setInterimText("");
+    liveTranscriptRef.current = "";  // 同步清空ref
     setTimeout(() => {
       if (transcriptBoxRef.current)
         transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
@@ -246,35 +247,68 @@ export default function Dashboard() {
 
   const finishSegment = async () => {
     const segId = currentSegIdRef.current;
-    if (!segId) return;
+    if (!segId) {
+      console.log('⚠️ No segId to finish');
+      return;
+    }
 
-    const updated = convos.map((c) => {
-      if (c.id !== activeConv.id) return c;
-      const segs = (c.segments || []).map((s) =>
-        s.id === segId
-          ? { ...s, end: Date.now(), transcript: liveTranscript, audioUrl: segAudioUrlRef.current }
-          : s
-      );
-      const next = { ...c, segments: segs };
-      if ((c.segments?.length || 0) >= 1 && c.title?.startsWith("New Chat") && liveTranscript) {
-        next.title = titleFrom(liveTranscript) || c.title;
-      }
-      return next;
+    // 使用ref中的最新值，避免闭包问题
+    const finalTranscript = liveTranscriptRef.current;
+    const audioUrl = segAudioUrlRef.current;
+    const currentActiveId = activeId;  // 保存当前activeId
+
+    console.log('💾 Finishing segment:', {
+      segId,
+      activeId: currentActiveId,
+      finalTranscript: finalTranscript?.substring(0, 50) + '...',
+      transcriptLength: finalTranscript?.length,
+      audioUrl: audioUrl ? 'exists' : 'null'
     });
-    setConvos(updated);
+
+    if (!currentActiveId) {
+      console.error('❌ No activeId when finishing segment!');
+      return;
+    }
+
+    if (!finalTranscript) {
+      console.warn('⚠️ finalTranscript is empty when finishing segment!');
+    }
+
+    // 使用函数式更新，确保基于最新的state
+    setConvos((prevConvos) => {
+      const updated = prevConvos.map((c) => {
+        if (c.id !== currentActiveId) return c;
+        const segs = (c.segments || []).map((s) =>
+          s.id === segId
+            ? { ...s, end: Date.now(), transcript: finalTranscript, audioUrl: audioUrl }
+            : s
+        );
+        // 保持原有标题，不自动重命名
+        return { ...c, segments: segs };
+      });
+      
+      const updatedConv = updated.find(c => c.id === currentActiveId);
+      console.log('✅ Updated convos with segment:', updatedConv?.segments?.length, 'segments');
+      console.log('✅ Updated segment:', updatedConv?.segments?.find(s => s.id === segId));
+      
+      return updated;
+    });
 
     try {
-      await appendSegment(activeConv.id, {
+      await appendSegment(currentActiveId, {
         id: segId,
         start: Date.now() - 1,
         end: Date.now(),
-        transcript: liveTranscript,
-        audioUrl: segAudioUrlRef.current,
+        transcript: finalTranscript,
+        audioUrl: audioUrl,
       });
-    } catch {}
+      console.log('✅ Segment saved to backend');
+    } catch (err) {
+      console.error('❌ Failed to save segment to backend:', err);
+    }
 
     setLiveTranscript("");
-    setInterimText("");
+    liveTranscriptRef.current = "";  // 同步清空ref
     currentSegIdRef.current = null;
     segAudioUrlRef.current = null;
   };
@@ -304,14 +338,24 @@ export default function Dashboard() {
     try {
       streamRef.current = createRealTimeClient({
         onPartialText: (text) => {
-          setInterimText(text);
+          console.log('📝 Partial text:', text);
+          setProcessing(true);  // 标记正在处理
+          // 将partial文本追加到liveTranscript，保留每一句
+          setLiveTranscript((prev) => {
+            const newTranscript = !prev ? text : prev + (prev.match(/[.!?]$/) ? ' ' : ' ') + text;
+            liveTranscriptRef.current = newTranscript;  // 同步更新ref
+            return newTranscript;
+          });
           if (transcriptBoxRef.current) {
             transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
           }
         },
         onFinalText: (text) => {
-          setInterimText("");
-          setLiveTranscript((prev) => (prev ? prev + " " + text : text));
+          console.log('✅ Final text:', text);
+          // Final文本作为完整文本，覆盖之前的partial累积
+          // 这样可以确保最终文本是完整准确的
+          setLiveTranscript(text);
+          liveTranscriptRef.current = text;  // 同步更新ref
           if (transcriptBoxRef.current) {
             transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
           }
@@ -327,8 +371,11 @@ export default function Dashboard() {
             playCompleteAudio();
           }
         },
-        onDone: () => {
-          console.log('Session processing complete');
+        onDone: async () => {
+          console.log('✅ Session processing complete');
+          // 先保存segment（此时liveTranscript已经是完整的final文本）
+          await finishSegment();
+          setProcessing(false);  // 处理完成
           // 在done消息后断开连接
           setTimeout(() => {
             if (streamRef.current) {
@@ -338,9 +385,12 @@ export default function Dashboard() {
             }
           }, 500); // 等待500ms确保所有音频都播放完
         },
-        onError: (error, code) => {
+        onError: async (error, code) => {
           console.error('Real-time client error:', code, error);
           alert(`Error: ${error.message}`);
+          // 错误时也保存已有的transcript
+          await finishSegment();
+          setProcessing(false);
           // 发生错误时断开连接
           if (streamRef.current) {
             streamRef.current.disconnect();
@@ -479,6 +529,7 @@ export default function Dashboard() {
 
   const micStop = async () => {
     setRecording(false);
+    setProcessing(true);  // 开始处理
     
     // 停止MediaRecorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -491,17 +542,16 @@ export default function Dashboard() {
     try {
       if (streamRef.current) {
         streamRef.current.stop();
-        console.log('Stop message sent, waiting for ASR and TTS...');
+        console.log('🔄 Stop message sent, processing ASR and TTS...');
       }
     } catch (error) {
       console.error('Error stopping:', error);
+      setProcessing(false);
     }
     
     // 不要立即断开连接！等待done消息
     // WebSocket会在onDone回调中自动断开
-    // 或者用户可以手动断开
-    
-    await finishSegment();
+    // finishSegment将在onDone回调中调用，确保liveTranscript已是完整的final文本
   };
 
   const onMicToggle = () => (recording ? micStop() : micStart());
@@ -660,11 +710,15 @@ export default function Dashboard() {
               {s.transcript ? <div className={styles.segmentText}>{s.transcript}</div> : null}
             </div>
           ))}
-          {recording ? (
+          {(recording || processing) ? (
             <div className={`${styles.segment} ${styles.segmentLive}`}>
-              <div className={styles.segmentMeta}><span>Recording…</span></div>
+              <div className={styles.segmentMeta}>
+                <span>
+                  {recording ? "🎙️ Recording…" : processing ? "⏳ Processing…" : ""}
+                </span>
+              </div>
               <div className={styles.segmentText}>
-                {liveTranscript}<span style={{ opacity: 0.5 }}>{interimText}</span>
+                {liveTranscript || "Listening..."}
               </div>
             </div>
           ) : !activeConv?.segments?.length ? (
