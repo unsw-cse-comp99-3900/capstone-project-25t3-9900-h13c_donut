@@ -1,132 +1,113 @@
-/**
- * Conversations API (user-scoped, in-memory/localStorage first)
- *
- * USE_LOCAL_STORAGE = true → store as { [userId]: Conversation[] } in key "convos_v2".
+// src/api/conversations.js
+const BASE_URL = "http://localhost:8000/api/v1"; // 用 localhost，保证 Cookie 同站
+
+async function api(path, { method = "GET", body } = {}) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "include",
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok || (data && data.success === false)) {
+    const msg = data?.error?.message || data?.detail || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data?.data ?? data;
+}
+
+/** 
+ * listConversations
+ * 返回：Array<{ id, title, createdAt }>
  */
-
-const USE_LOCAL_STORAGE = true;
-const API = import.meta.env.VITE_API_BASE || "http://localhost:8000";
-
-function getUserId() {
-  return (
-    localStorage.getItem("authUserId") ||
-    sessionStorage.getItem("authUserId") ||
-    "anon"
-  );
-}
-
-/* ------------ Local helpers (user-scoped) ------------ */
-const LKEY = "convos_v2";
-function readAll() {
-  try { return JSON.parse(localStorage.getItem(LKEY)) || {}; }
-  catch { return {}; }
-}
-function writeAll(bag) { localStorage.setItem(LKEY, JSON.stringify(bag)); }
-function loadForUser(uid) {
-  const bag = readAll();
-  return Array.isArray(bag[uid]) ? bag[uid] : [];
-}
-function saveForUser(uid, convs) {
-  const bag = readAll();
-  bag[uid] = convs;
-  writeAll(bag);
-}
-
 export async function listConversations() {
-  if (USE_LOCAL_STORAGE) return loadForUser(getUserId());
-  const r = await fetch(`${API}/conversations`, { credentials: "include" });
-  if (!r.ok) throw new Error("Failed to list conversations");
-  return r.json();
+  const d = await api(`/conversations?offset=0&limit=100`);
+  const items = (d.items || []).map(c => ({
+    id: c.id,
+    title: c.title || "",
+    createdAt: c.startedAt ? Date.parse(c.startedAt) : Date.now(),
+  }));
+  return items; // ← 兼容 mockDB：直接是数组
 }
 
-export async function createConversation(payload = {}) {
-  if (USE_LOCAL_STORAGE) {
-    const uid = getUserId();
-    const ts = Date.now();
-    const id = "c_" + ts + "_" + Math.random().toString(36).slice(2, 7); // 更稳的唯一值
-    const title = payload.title || `New Chat ${new Date(ts).toLocaleString()}`;
-    const conv = { id, title, createdAt: ts, segments: [] };
-    const all = loadForUser(uid);
-    // 防重复：若同 id 已存在则不写入
-    if (!all.some((x) => x.id === id)) {
-      saveForUser(uid, [conv, ...all]);
-    }
-    return conv;
-  }
-  const r = await fetch(`${API}/conversations`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error("Failed to create conversation");
-  return r.json();
+/** 
+ * createConversation({ title? })
+ * 返回：{ id, title, createdAt, segments: [] }
+ */
+export async function createConversation({ title } = {}) {
+  const d = await api(`/conversations`, { method: "POST", body: { title } });
+  return {
+    id: d.id,
+    title: d.title || "",
+    createdAt: d.createdAtMs ?? Date.now(),
+    segments: [],
+  }; // ← 兼容 mockDB：直接对象
 }
 
-export async function loadConversation(id) {
-  if (USE_LOCAL_STORAGE) {
-    const uid = getUserId();
-    const all = loadForUser(uid);
-    return all.find((c) => c.id === id) || null;
-  }
-  const r = await fetch(`${API}/conversations/${id}`, { credentials: "include" });
-  if (!r.ok) throw new Error("Failed to load conversation");
-  return r.json();
+/** 
+ * getConversation(id) / loadConversation(id)
+ * 返回：{ id, title, createdAt, segments: [...] }
+ */
+export async function getConversation(id) {
+  const d = await api(`/conversations/${id}`);
+  const conv = d.conversation || {};
+  const segments = (d.transcripts || []).map(t => ({
+    id: `s_${t.seq}`,
+    start: t.startMs ?? Date.now(),
+    end: t.endMs ?? Date.now(),
+    transcript: t.text || "",
+    audioUrl: t.audioUrl || null,
+  }));
+  return {
+    id: conv.id,
+    title: conv.title || "",
+    createdAt: conv.startedAt ? Date.parse(conv.startedAt) : Date.now(),
+    segments,
+  };
 }
 
+// 兼容旧命名
+export const loadConversation = getConversation;
+
+/** 
+ * renameConversation(id, title)
+ * 返回：true
+ */
 export async function renameConversation(id, title) {
-  if (USE_LOCAL_STORAGE) {
-    const uid = getUserId();
-    const all = loadForUser(uid);
-    const idx = all.findIndex((c) => c.id === id);
-    if (idx >= 0) {
-      all[idx] = { ...all[idx], title: title || all[idx].title };
-      saveForUser(uid, all);
-    }
-    return { ok: true };
-  }
-  const r = await fetch(`${API}/conversations/${id}`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
-  return { ok: r.ok };
+  await api(`/conversations/${id}`, { method: "PATCH", body: { title } });
+  return true; // ← 兼容 mockDB
 }
 
-export async function appendSegment(conversationId, seg) {
-  if (USE_LOCAL_STORAGE) {
-    const uid = getUserId();
-    const all = loadForUser(uid);
-    const idx = all.findIndex((c) => c.id === conversationId);
-    if (idx >= 0) {
-      const conv = all[idx];
-      conv.segments = [...(conv.segments || []), seg];
-      all[idx] = conv;
-      saveForUser(uid, all);
-    }
-    return seg;
-  }
-  const r = await fetch(`${API}/conversations/${conversationId}/segments`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(seg),
-  });
-  if (!r.ok) throw new Error("Failed to append segment");
-  return r.json();
-}
-
+/** 
+ * deleteConversation(id)
+ * 返回：true
+ */
 export async function deleteConversation(id) {
-  if (USE_LOCAL_STORAGE) {
-    const uid = getUserId();
-    const all = loadForUser(uid);
-    saveForUser(uid, all.filter((c) => c.id !== id));
-    return { ok: true };
-  }
-  const r = await fetch(`${API}/conversations/${id}`, {
-    method: "DELETE",
-    credentials: "include",
+  await api(`/conversations/${id}`, { method: "DELETE" });
+  return true; // ← 兼容 mockDB
+}
+
+/** 
+ * appendSegment(id, seg)
+ * seg: { start, end, transcript, audioUrl }
+ * 返回：{ id, start, end, transcript, audioUrl }
+ */
+export async function appendSegment(id, seg) {
+  const d = await api(`/conversations/${id}/segments`, {
+    method: "POST",
+    body: {
+      startMs: seg.start ?? null,
+      endMs: seg.end ?? null,
+      text: seg.transcript ?? "",
+      audioUrl: seg.audioUrl ?? null,
+    },
   });
-  return { ok: r.ok };
+  return {
+    id: d.id,
+    start: d.startMs ?? Date.now(),
+    end: d.endMs ?? Date.now(),
+    transcript: d.text || "",
+    audioUrl: d.audioUrl || null,
+  }; // ← 兼容 mockDB
 }

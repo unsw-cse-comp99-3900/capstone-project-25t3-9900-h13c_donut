@@ -19,60 +19,187 @@ export function createStreamClient({
   let mediaStream = null;
   let mediaRecorder = null;
 
+  // ===== TTS 播放相关 =====
   let ttsMime = "audio/mpeg";
-  let ttsChunks = [];
-  
-  // 🔥 音频播放相关
-  let audioContext = null;
-  let audioQueue = [];
-  let isPlaying = false;
-  let currentVolume = outputVolume;
+  let ttsChunks = []; // 收集所有二进制分片，最后拼成 Blob
 
+  // -- MSE 播放器 --
+  let audioEl = null;
+  let mediaSource = null;
+  let sourceBuffer = null;
+  let mseQueue = [];         // Uint8Array 队列，等待 append
+  let mseReady = false;
+  let mseEnded = false;
+
+  // -- WebAudio 退化播放器（仅在 MSE 不可用时启用） --
+  let audioContext = null;
+  let decodeQueue = [];      // ArrayBuffer 队列
+  let decodePlaying = false;
+
+  let currentVolume = Math.max(0, Math.min(1, outputVolume));
+
+  // ========== 工具 ==========
   function sendJSON(ws, obj) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
   }
 
-  // 🔥 播放音频片段
-  async function playNextChunk() {
-    if (audioQueue.length === 0) {
-      isPlaying = false;
+  function ensureAudioElement() {
+    if (audioEl) return audioEl;
+    audioEl = document.createElement("audio");
+    audioEl.autoplay = true;
+    audioEl.controls = false;
+    audioEl.style.display = "none"; // 不占位
+    audioEl.volume = currentVolume;
+    document.body.appendChild(audioEl);
+    return audioEl;
+  }
+
+  // ========== MSE 实现 ==========
+  function mseInit() {
+    const el = ensureAudioElement();
+    if (!("MediaSource" in window)) return false;
+
+    mediaSource = new MediaSource();
+    el.src = URL.createObjectURL(mediaSource);
+    mseQueue = [];
+    mseReady = false;
+    mseEnded = false;
+
+    mediaSource.addEventListener("sourceopen", () => {
+      try {
+        // 绝大多数浏览器支持 'audio/mpeg'
+        if (!MediaSource.isTypeSupported(ttsMime)) {
+          // 退化为 audio/mpeg
+          ttsMime = "audio/mpeg";
+        }
+        sourceBuffer = mediaSource.addSourceBuffer(ttsMime);
+        sourceBuffer.mode = "sequence";
+        sourceBuffer.addEventListener("updateend", mseFeed);
+        mseReady = true;
+        mseFeed();
+      } catch (e) {
+        console.warn("[MSE] sourceopen error, fallback to WebAudio:", e);
+        mseTearDown();
+      }
+    });
+
+    mediaSource.addEventListener("error", (e) => {
+      console.warn("[MSE] mediaSource error:", e);
+    });
+
+    return true;
+  }
+
+  function mseAppend(u8) {
+    if (!mseReady || !sourceBuffer) {
+      mseQueue.push(u8);
       return;
     }
+    mseQueue.push(u8);
+    mseFeed();
+  }
 
-    isPlaying = true;
-    const chunk = audioQueue.shift();
+  function mseFeed() {
+    if (!sourceBuffer || sourceBuffer.updating) return;
+    if (mseQueue.length === 0) {
+      if (mseEnded && mediaSource && mediaSource.readyState === "open") {
+        try { mediaSource.endOfStream(); } catch {}
+      }
+      return;
+    }
+    const chunk = mseQueue.shift();
+    try {
+      sourceBuffer.appendBuffer(chunk);
+    } catch (e) {
+      console.warn("[MSE] append error, dropping chunk:", e);
+    }
+  }
+
+  function mseEnd() {
+    mseEnded = true;
+    mseFeed();
+  }
+
+  function mseTearDown() {
+    try {
+      if (sourceBuffer) {
+        sourceBuffer.abort();
+      }
+    } catch {}
+    try {
+      if (mediaSource && mediaSource.readyState === "open") {
+        mediaSource.endOfStream();
+      }
+    } catch {}
+    sourceBuffer = null;
+    mediaSource = null;
+    mseQueue = [];
+    mseReady = false;
+    mseEnded = false;
+  }
+
+  // ========== WebAudio 退化实现（攒包后解码） ==========
+  const MIN_CHUNK_BYTES = 24 * 1024; // 累计到 24KB 再解码
+  const MAX_BUFFER_BYTES = 1024 * 1024; // 上限 1MB
+
+  async function waPlayNext() {
+    if (decodePlaying) return;
+    decodePlaying = true;
 
     try {
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
+      const el = ensureAudioElement(); // 用 <audio> 控制音量的视觉行为，这里不用其解码
+      el.volume = currentVolume;
 
-      console.log("[streamClient] Decoding audio chunk:", chunk.byteLength, "bytes");
-      const audioBuffer = await audioContext.decodeAudioData(chunk.slice(0));
-      
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = currentVolume;
-      
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      source.onended = () => {
-        console.log("[streamClient] Chunk ended, playing next");
-        playNextChunk();
-      };
-      
-      source.start(0);
-      console.log("[streamClient] ✅ Playing audio chunk");
-      
-    } catch (e) {
-      console.error("[streamClient] ❌ Play error:", e);
-      playNextChunk();
+      while (decodeQueue.length > 0) {
+        // 拼接尽可能多的分片，提高解码成功率
+        let total = 0;
+        for (const ab of decodeQueue) total += ab.byteLength;
+        if (total < MIN_CHUNK_BYTES) break;
+
+        // 取尽量多的数据去解码
+        const big = new Uint8Array(total);
+        let offset = 0;
+        while (decodeQueue.length) {
+          const ab = decodeQueue.shift();
+          const u8 = new Uint8Array(ab);
+          big.set(u8, offset);
+          offset += u8.byteLength;
+        }
+
+        try {
+          const buf = big.buffer;
+          const decoded = await audioContext.decodeAudioData(buf.slice(0));
+          const src = audioContext.createBufferSource();
+          const gain = audioContext.createGain();
+          gain.gain.value = currentVolume;
+          src.buffer = decoded;
+          src.connect(gain);
+          gain.connect(audioContext.destination);
+
+          await new Promise((resolve) => {
+            src.onended = resolve;
+            src.start(0);
+          });
+        } catch (e) {
+          console.warn("[WebAudio] decode failed once, keep buffering:", e);
+          // 放回去，等待更多数据
+          decodeQueue.unshift(big.buffer);
+          if (big.byteLength > MAX_BUFFER_BYTES) {
+            console.warn("[WebAudio] buffer too large, dropping");
+            decodeQueue = [];
+          }
+          break;
+        }
+      }
+    } finally {
+      decodePlaying = false;
     }
   }
 
+  // ========== 外部 API ==========
   async function open() {
     console.log("[client] createStreamClient.open() called");
 
@@ -86,11 +213,9 @@ export function createStreamClient({
       };
       textWS.onerror = (e) => { console.error("[client] textWS error", e); reject(e); };
       textWS.onmessage = (ev) => {
-        console.log("[client] textWS message raw:", ev.data);
         try {
           const msg = JSON.parse(ev.data);
           if (msg?.type === "ready" || msg?.type === "pong") return;
-
           if (msg.type === "interim") {
             onText?.({ interim: msg.text, ts: msg.ts, confidence: msg.confidence });
           } else if (msg.type === "final") {
@@ -98,7 +223,7 @@ export function createStreamClient({
           } else {
             console.warn("[client] textWS unknown msg:", msg);
           }
-        } catch (e) {
+        } catch {
           if (typeof ev.data === "string") onText?.(ev.data);
         }
       };
@@ -109,77 +234,64 @@ export function createStreamClient({
       try {
         await new Promise((resolve, reject) => {
           ttsWS = new WebSocket(WS_TTS_URL);
-          ttsWS.binaryType = "arraybuffer"; // 🔥 关键！
-          
+          ttsWS.binaryType = "arraybuffer";
+
           ttsWS.onopen = () => {
             console.log("[client] ttsWS open, subscribe", conversationId);
             sendJSON(ttsWS, { type: "start", conversationId });
             resolve();
           };
-          
-          ttsWS.onerror = (e) => { 
-            console.warn("[client] ttsWS error", e); 
-            reject(e); 
-          };
-          
+
+          ttsWS.onerror = (e) => { console.warn("[client] ttsWS error", e); reject(e); };
+
           ttsWS.onmessage = (ev) => {
-            // 🔥 关键修复：正确处理二进制数据
             if (typeof ev.data === "string") {
+              // 控制消息
               try {
                 const msg = JSON.parse(ev.data);
-                console.log("[client] ttsWS control message:", msg);
-                
                 if (msg.type === "start") {
                   console.log("[client] 🎵 TTS stream starting");
                   ttsMime = msg.mime || "audio/mpeg";
                   ttsChunks = [];
-                  audioQueue = [];
+
+                  // 优先使用 MSE，失败则退化到 WebAudio
+                  const ok = mseInit();
+                  if (!ok) {
+                    console.warn("[client] MSE not available, fallback to WebAudio buffering");
+                    // 清理 WebAudio 队列
+                    decodeQueue = [];
+                    decodePlaying = false;
+                  }
                   onTtsStart?.();
-                  
                 } else if (msg.type === "stop") {
-                  console.log("[client] 🎵 TTS stream stopped, waiting for playback");
-                  
-                  // 等待播放完成
-                  const waitForPlayback = async () => {
-                    let waitCount = 0;
-                    while ((audioQueue.length > 0 || isPlaying) && waitCount < 100) {
-                      await new Promise(resolve => setTimeout(resolve, 100));
-                      waitCount++;
-                    }
-                    console.log("[client] 🎵 Playback finished");
-                    
-                    // 创建完整 blob
+                  console.log("[client] 🎵 TTS stream stopped");
+                  // 完成 MSE
+                  if (mediaSource) mseEnd();
+
+                  // 等待播放几百毫秒再出 blob（保险）
+                  setTimeout(() => {
                     const blob = new Blob(ttsChunks, { type: ttsMime });
-                    console.log("[client] 🎵 Created audio blob:", blob.size, "bytes");
                     onTtsBlob?.(blob);
                     onTtsEnded?.();
-                  };
-                  waitForPlayback();
-                  
-                } else if (msg.type === "ready" || msg.type === "pong") {
-                  // ignore
+                  }, 300);
                 }
               } catch {
-                // ignore
+                // ignore 非 JSON 文本
               }
-            } 
-            // 🔥 处理二进制音频数据
-            else if (ev.data instanceof ArrayBuffer) {
-              console.log("[client] 🎵 TTS binary chunk received:", ev.data.byteLength, "bytes");
-              
-              // 保存到数组（用于最后创建完整 blob）
-              ttsChunks.push(new Uint8Array(ev.data));
-              
-              // 🔥 立即加入播放队列
-              audioQueue.push(ev.data.slice(0)); // 复制 ArrayBuffer
-              
-              // 如果还没开始播放，立即开始
-              if (!isPlaying) {
-                console.log("[client] 🎵 Starting audio playback");
-                playNextChunk();
+            } else if (ev.data instanceof ArrayBuffer) {
+              // 二进制分片
+              const ab = ev.data.slice(0);
+              const u8 = new Uint8Array(ab);
+              ttsChunks.push(u8);
+
+              // MSE 路径
+              if (mediaSource && sourceBuffer) {
+                mseAppend(u8);
+              } else {
+                // 退化路径：缓冲到一定大小再解码
+                decodeQueue.push(ab);
+                if (!decodePlaying) waPlayNext();
               }
-            } else {
-              console.warn("[client] ttsWS unknown data type:", typeof ev.data);
             }
           };
         });
@@ -241,7 +353,6 @@ export function createStreamClient({
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0 && uploadWS?.readyState === WebSocket.OPEN) {
-        console.log("[client] send audio chunk", e.data.size);
         e.data.arrayBuffer().then((buf) => uploadWS.send(buf));
       }
     };
@@ -260,13 +371,21 @@ export function createStreamClient({
     try { textWS?.close(); } catch {}
     try { ttsWS?.close(); } catch {}
     try { uploadWS?.close(); } catch {}
+
+    // 释放 MSE
+    try { mseTearDown(); } catch {}
+
+    // 释放 WebAudio
     if (audioContext) {
       try { await audioContext.close(); } catch {}
+      audioContext = null;
     }
   }
 
   function setOutputVolume(v) {
     currentVolume = Math.max(0, Math.min(1, v));
+    if (audioEl) audioEl.volume = currentVolume;
+    // WebAudio 退化路径下也会在播放时读取 currentVolume
     console.log("[streamClient] Volume set to:", currentVolume);
   }
 

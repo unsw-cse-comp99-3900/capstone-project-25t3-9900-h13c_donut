@@ -1,0 +1,8 @@
+.venv/
+pycache/
+.env
+.aerich/
+.pytest_cache/
+.vscode/
+.idea/
+"@ | Out-File -Encoding utf8 .gitignore

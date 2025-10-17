@@ -1,75 +1,67 @@
 // src/api/auth.js
-import { mockDB } from "./mockDB";
+const BASE_URL = "http://localhost:8000/api/v1";
 
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function api(path, { method = "GET", body } = {}) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "include", // 关键：带上 HttpOnly Cookie
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok || (data && data.success === false)) {
+    const msg = data?.error?.message || data?.detail || `HTTP ${res.status}`;
+    return { ok: false, message: msg, code: data?.error?.code };
+  }
+  return { ok: true, data: data?.data ?? data };
+}
 
 /**
  * Login with username + password
  */
 export async function login({ username, password }) {
-  await delay(400);
-  if ((username || "").includes("fail")) {
-    return { ok: false, message: "Invalid credentials (mock)" };
-  }
-  const user = mockDB.verifyLoginByUsername(username, password);
-  if (!user) return { ok: false, message: "Invalid username or password" };
-  const token = "mock-token-" + user.id;
-  return {
-    ok: true,
-    token,
-    user: { id: user.id, username: user.username, email: user.email },
-  };
+  const r = await api("/auth/login", { method: "POST", body: { username, password } });
+  if (!r.ok) return r;
+  const { user, accessToken } = r.data;
+  return { ok: true, token: accessToken, user: { id: user.id, username: user.username, email: user.email ?? "" } };
 }
 
 /**
- * Register (mock)
+ * Register (backend)
  * - unique username
  * - unique email
  */
 export async function register({ username, email, password }) {
-  await delay(600);
-  if (!username || !email || !password) return { ok: false, message: "Missing required fields" };
-  if (mockDB.findUserByUsername(username)) {
-    return { ok: false, code: "USERNAME_EXISTS", message: "Username already exists" };
-  }
-  if (mockDB.findUserByEmail(email)) {
-    return { ok: false, code: "EMAIL_EXISTS", message: "Email already registered" };
-  }
-  const user = mockDB.createUser({ username, email, password });
-  return {
-    ok: true,
-    message: "Registration successful",
-    user: { id: user.id, username: user.username, email: user.email },
-  };
+  const r = await api("/auth/register", { method: "POST", body: { username, email, password } });
+  if (!r.ok) return r;
+  const { id, username: un, email: em } = r.data;
+  return { ok: true, message: "Registration successful", user: { id, username: un, email: em || "" } };
 }
 
 /**
  * Check if username+email exists for password reset
  */
 export async function checkUserForReset({ username, email }) {
-  await delay(400);
-  const u = mockDB.verifyUserForReset(username, email);
-  if (!u) return { ok: false, message: "User not found" };
-  return { ok: true, userId: u.id };
+  const r = await api("/auth/check-reset", { method: "POST", body: { username, email } });
+  if (!r.ok) return r;
+  return { ok: true, userId: r.data.userId };
 }
 
 /**
  * Reset password (after verification)
  */
 export async function resetPassword({ userId, newPassword }) {
-  await delay(400);
-  if (!userId || !newPassword) return { ok: false, message: "Missing parameters" };
-  const ok = mockDB.updateUserPassword(userId, newPassword);
-  return ok ? { ok: true, message: "Password updated successfully" } : { ok: false, message: "User not found" };
+  const r = await api("/auth/reset-password", { method: "POST", body: { userId, newPassword } });
+  return r.ok ? { ok: true, message: "Password updated successfully" } : r;
 }
 
 /**
- * Change password for logged-in user (simple version:
- * only provide newPassword; verify identity by current session userId)
+ * Change password for logged-in user
  */
 export async function changePassword({ userId, newPassword }) {
-  await delay(400);
-  if (!userId || !newPassword) return { ok: false, message: "Missing parameters" };
-  const ok = mockDB.updateUserPassword(userId, newPassword);
-  return ok ? { ok: true } : { ok: false, message: "User not found" };
+  // 后端根据 Cookie/JWT 验证当前用户，无需传 userId，但保持前端签名不变
+  const r = await api("/auth/change-password", { method: "POST", body: { newPassword } });
+  return r.ok ? { ok: true } : r;
 }

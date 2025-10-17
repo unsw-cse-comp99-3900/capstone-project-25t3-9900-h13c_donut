@@ -1,2 +1,20 @@
+# env & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# node
+node_modules/
+npm-debug.log*
+pnpm-lock.yaml
+yarn.lock
+
+# python (若有)
 __pycache__/
 *.pyc
+*.pyo
+
+# build artifacts
+dist/
+build/
