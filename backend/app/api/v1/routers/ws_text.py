@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 import json
-from ..core.pubsub import channel
+from app.core.pubsub import channel
 
 router = APIRouter()
 

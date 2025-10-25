@@ -6,9 +6,9 @@ from typing import Dict, Optional
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from ..core.pubsub import channel
-from ..services.asr_openai import webm_to_wav_16k_mono, transcribe_wav_via_url
-from ..services.tts_elevenlabs import synth_and_stream_free, synth_and_stream_paid
+from app.core.pubsub import channel
+from app.services.asr_openai import webm_to_wav_16k_mono, transcribe_wav_via_url
+from app.services.tts_elevenlabs import synth_and_stream_free, synth_and_stream_paid
 
 router = APIRouter()
 

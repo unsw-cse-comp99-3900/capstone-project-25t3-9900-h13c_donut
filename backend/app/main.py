@@ -12,11 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.db import init_db, close_db
 
-# 你的 REST 路由
 from app.api.v1.routers import auth, accents, session as session_router, conversations, admin
 
-# 你同学的 WebSocket 路由（保持原路径，不改他代码）
-from app.routers import ws_text, ws_upload, ws_tts
+
+from app.api.v1.routers.ws_text import router as ws_text_router
+from app.api.v1.routers.ws_upload import router as ws_upload_router
+from app.api.v1.routers.ws_tts import router as ws_tts_router
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -114,9 +115,9 @@ app.include_router(conversations.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 
 # WebSocket（保持他原装装饰器路径）
-app.include_router(ws_text.router)
-app.include_router(ws_upload.router)
-app.include_router(ws_tts.router)
+app.include_router(ws_text_router)
+app.include_router(ws_upload_router)
+app.include_router(ws_tts_router)
 
 @app.get("/healthz")
 def healthz():
