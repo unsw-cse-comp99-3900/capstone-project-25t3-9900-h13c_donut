@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # 你的配置与 DB
-from app.core.config import settings
+from app.config import settings
 from app.core.db import init_db, close_db
 
 from app.api.v1.routers import auth, accents, session as session_router, conversations, admin
