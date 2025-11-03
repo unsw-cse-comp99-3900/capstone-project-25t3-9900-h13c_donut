@@ -19,6 +19,10 @@ export function createStreamClient({
   let mediaStream = null;
   let mediaRecorder = null;
 
+  // ====== （新增）采集侧降噪处理相关 ======
+  let procAudioCtx = null;      // 专用于麦克风降噪处理的 AudioContext（与 TTS 播放分开）
+  let procDest = null;          // MediaStreamDestination，输出给 MediaRecorder
+
   // ===== TTS 播放相关 =====
   let ttsMime = "audio/mpeg";
   let ttsChunks = []; // 收集所有二进制分片，最后拼成 Blob
@@ -32,7 +36,7 @@ export function createStreamClient({
   let mseEnded = false;
 
   // -- WebAudio 退化播放器（仅在 MSE 不可用时启用） --
-  let audioContext = null;
+  let audioContext = null;   // 注意：此 audioContext 仅用于 TTS 回放的退化方案
   let decodeQueue = [];      // ArrayBuffer 队列
   let decodePlaying = false;
 
@@ -67,9 +71,7 @@ export function createStreamClient({
 
     mediaSource.addEventListener("sourceopen", () => {
       try {
-        // 绝大多数浏览器支持 'audio/mpeg'
         if (!MediaSource.isTypeSupported(ttsMime)) {
-          // 退化为 audio/mpeg
           ttsMime = "audio/mpeg";
         }
         sourceBuffer = mediaSource.addSourceBuffer(ttsMime);
@@ -122,9 +124,7 @@ export function createStreamClient({
 
   function mseTearDown() {
     try {
-      if (sourceBuffer) {
-        sourceBuffer.abort();
-      }
+      if (sourceBuffer) sourceBuffer.abort();
     } catch {}
     try {
       if (mediaSource && mediaSource.readyState === "open") {
@@ -150,16 +150,14 @@ export function createStreamClient({
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
-      const el = ensureAudioElement(); // 用 <audio> 控制音量的视觉行为，这里不用其解码
+      const el = ensureAudioElement();
       el.volume = currentVolume;
 
       while (decodeQueue.length > 0) {
-        // 拼接尽可能多的分片，提高解码成功率
         let total = 0;
         for (const ab of decodeQueue) total += ab.byteLength;
         if (total < MIN_CHUNK_BYTES) break;
 
-        // 取尽量多的数据去解码
         const big = new Uint8Array(total);
         let offset = 0;
         while (decodeQueue.length) {
@@ -185,7 +183,6 @@ export function createStreamClient({
           });
         } catch (e) {
           console.warn("[WebAudio] decode failed once, keep buffering:", e);
-          // 放回去，等待更多数据
           decodeQueue.unshift(big.buffer);
           if (big.byteLength > MAX_BUFFER_BYTES) {
             console.warn("[WebAudio] buffer too large, dropping");
@@ -246,7 +243,6 @@ export function createStreamClient({
 
           ttsWS.onmessage = (ev) => {
             if (typeof ev.data === "string") {
-              // 控制消息
               try {
                 const msg = JSON.parse(ev.data);
                 if (msg.type === "start") {
@@ -254,21 +250,17 @@ export function createStreamClient({
                   ttsMime = msg.mime || "audio/mpeg";
                   ttsChunks = [];
 
-                  // 优先使用 MSE，失败则退化到 WebAudio
                   const ok = mseInit();
                   if (!ok) {
                     console.warn("[client] MSE not available, fallback to WebAudio buffering");
-                    // 清理 WebAudio 队列
                     decodeQueue = [];
                     decodePlaying = false;
                   }
                   onTtsStart?.();
                 } else if (msg.type === "stop") {
                   console.log("[client] 🎵 TTS stream stopped");
-                  // 完成 MSE
                   if (mediaSource) mseEnd();
 
-                  // 等待播放几百毫秒再出 blob（保险）
                   setTimeout(() => {
                     const blob = new Blob(ttsChunks, { type: ttsMime });
                     onTtsBlob?.(blob);
@@ -276,19 +268,16 @@ export function createStreamClient({
                   }, 300);
                 }
               } catch {
-                // ignore 非 JSON 文本
+                // ignore
               }
             } else if (ev.data instanceof ArrayBuffer) {
-              // 二进制分片
               const ab = ev.data.slice(0);
               const u8 = new Uint8Array(ab);
               ttsChunks.push(u8);
 
-              // MSE 路径
               if (mediaSource && sourceBuffer) {
                 mseAppend(u8);
               } else {
-                // 退化路径：缓冲到一定大小再解码
                 decodeQueue.push(ab);
                 if (!decodePlaying) waPlayNext();
               }
@@ -332,21 +321,66 @@ export function createStreamClient({
     }
   }
 
+  // ====== （修改）采集 + 降噪 + 发送 ======
   async function startMic() {
     console.log("[client] requesting mic");
     try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 启用浏览器内建降噪/回声消除/自动增益，低延迟且跨平台
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
+        }
+      });
       console.log("[client] mic granted");
     } catch (e) {
       console.error("[client] getUserMedia failed:", e.name, e.message);
       throw e;
     }
 
+    // 轻量 WebAudio 处理链（高通→低通→压缩），输出到 MediaStreamDestination
+    try {
+      procAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      const src = procAudioCtx.createMediaStreamSource(mediaStream);
+
+      const highpass = procAudioCtx.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 90; // 80~120 可调
+
+      const lowpass = procAudioCtx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 6500; // 6~8 kHz 可调
+
+      const comp = procAudioCtx.createDynamicsCompressor();
+      comp.threshold.setValueAtTime(-50, procAudioCtx.currentTime);
+      comp.knee.setValueAtTime(30, procAudioCtx.currentTime);
+      comp.ratio.setValueAtTime(8, procAudioCtx.currentTime);
+      comp.attack.setValueAtTime(0.003, procAudioCtx.currentTime);
+      comp.release.setValueAtTime(0.25, procAudioCtx.currentTime);
+
+      procDest = procAudioCtx.createMediaStreamDestination();
+
+      // mic -> HP -> LP -> Comp -> procDest
+      src.connect(highpass);
+      highpass.connect(lowpass);
+      lowpass.connect(comp);
+      comp.connect(procDest);
+      // 不本地监听：如需监听，可额外 comp.connect(procAudioCtx.destination);
+    } catch (e) {
+      console.warn("[client] WebAudio pipeline failed, fallback to raw stream:", e);
+      procDest = null;
+    }
+
     const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : "audio/webm";
 
-    mediaRecorder = new MediaRecorder(mediaStream, {
+    // 录“处理后的流”，失败则录原始流
+    const streamForRecorder = procDest?.stream || mediaStream;
+    mediaRecorder = new MediaRecorder(streamForRecorder, {
       mimeType: mime,
       audioBitsPerSecond: 128000,
     });
@@ -357,7 +391,7 @@ export function createStreamClient({
       }
     };
 
-    mediaRecorder.start(40);
+    mediaRecorder.start(40); // 每 40ms 一片
   }
 
   async function stopMic() {
@@ -365,6 +399,13 @@ export function createStreamClient({
     mediaStream?.getTracks().forEach((t) => t.stop());
     mediaRecorder = null;
     mediaStream = null;
+
+    // 清理采集侧处理资源
+    procDest = null;
+    if (procAudioCtx) {
+      try { await procAudioCtx.close(); } catch {}
+      procAudioCtx = null;
+    }
   }
 
   async function close() {
@@ -375,17 +416,23 @@ export function createStreamClient({
     // 释放 MSE
     try { mseTearDown(); } catch {}
 
-    // 释放 WebAudio
+    // 释放 TTS 退化回放用的 AudioContext（与采集侧不同）
     if (audioContext) {
       try { await audioContext.close(); } catch {}
       audioContext = null;
+    }
+
+    // 释放采集侧处理资源（防止未调用 stopMic 就 close 的情况）
+    procDest = null;
+    if (procAudioCtx) {
+      try { await procAudioCtx.close(); } catch {}
+      procAudioCtx = null;
     }
   }
 
   function setOutputVolume(v) {
     currentVolume = Math.max(0, Math.min(1, v));
     if (audioEl) audioEl.volume = currentVolume;
-    // WebAudio 退化路径下也会在播放时读取 currentVolume
     console.log("[streamClient] Volume set to:", currentVolume);
   }
 
