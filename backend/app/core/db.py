@@ -19,6 +19,7 @@ TORTOISE_ORM = {
                 "app.models.user",
                 "app.models.conversation",
                 "app.models.transcript",
+                "app.models.license_key",
                 "aerich.models",   # 必须：让 Aerich 管理迁移表
             ],
             "default_connection": "default",

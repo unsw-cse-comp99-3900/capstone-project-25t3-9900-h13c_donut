@@ -25,9 +25,17 @@ def hash_password(plain: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, role: str) -> str:
+    """
+    在 JWT 中加入 role，便于网关层快速做 RBAC 判定。
+    """
     now = dt.datetime.utcnow()
-    payload = {"sub": user_id, "iat": now, "exp": now + dt.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)}
+    payload = {
+        "sub": user_id,
+        "role": role,
+        "iat": now,
+        "exp": now + dt.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 def decode_access_token(token: str) -> dict:

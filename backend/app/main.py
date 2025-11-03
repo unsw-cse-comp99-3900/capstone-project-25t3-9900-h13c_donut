@@ -19,6 +19,7 @@ from app.api.v1.routers.ws_text import router as ws_text_router
 from app.api.v1.routers.ws_upload import router as ws_upload_router
 from app.api.v1.routers.ws_tts import router as ws_tts_router
 
+from app.core.bootstrap import ensure_default_admin
 logger = logging.getLogger("uvicorn.error")
 
 def _ensure_ffmpeg_on_path() -> None:
@@ -102,6 +103,8 @@ async def on_startup():
     _ensure_ffmpeg_on_path()
     # 你的 DB 初始化
     await init_db()
+    #首次有一个管理员账号
+    await ensure_default_admin()
 
 @app.on_event("shutdown")
 async def on_shutdown():
