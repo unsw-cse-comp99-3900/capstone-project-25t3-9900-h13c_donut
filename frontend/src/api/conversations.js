@@ -22,7 +22,7 @@ async function api(path, { method = "GET", body } = {}) {
  * 返回：Array<{ id, title, createdAt }>
  */
 export async function listConversations() {
-  const d = await api(`/conversations?offset=0&limit=100`);
+  const d = await apiRequest(`/conversations?offset=0&limit=100`);
   const items = (d.items || []).map(c => ({
     id: c.id,
     title: c.title || "",
@@ -36,7 +36,7 @@ export async function listConversations() {
  * 返回：{ id, title, createdAt, segments: [] }
  */
 export async function createConversation({ title } = {}) {
-  const d = await api(`/conversations`, { method: "POST", body: { title } });
+  const d = await apiRequest(`/conversations`, { method: "POST", body: { title } });
   return {
     id: d.id,
     title: d.title || "",
@@ -50,7 +50,7 @@ export async function createConversation({ title } = {}) {
  * 返回：{ id, title, createdAt, segments: [...] }
  */
 export async function getConversation(id) {
-  const d = await api(`/conversations/${id}`);
+  const d = await apiRequest(`/conversations/${id}`);
   const conv = d.conversation || {};
   const segments = (d.transcripts || []).map(t => ({
     id: `s_${t.seq}`,
@@ -75,7 +75,7 @@ export const loadConversation = getConversation;
  * 返回：true
  */
 export async function renameConversation(id, title) {
-  await api(`/conversations/${id}`, { method: "PATCH", body: { title } });
+  await apiRequest(`/conversations/${id}`, { method: "PATCH", body: { title } });
   return true; // ← 兼容 mockDB
 }
 
@@ -84,7 +84,7 @@ export async function renameConversation(id, title) {
  * 返回：true
  */
 export async function deleteConversation(id) {
-  await api(`/conversations/${id}`, { method: "DELETE" });
+  await apiRequest(`/conversations/${id}`, { method: "DELETE" });
   return true; // ← 兼容 mockDB
 }
 
@@ -94,7 +94,7 @@ export async function deleteConversation(id) {
  * 返回：{ id, start, end, transcript, audioUrl }
  */
 export async function appendSegment(id, seg) {
-  const d = await api(`/conversations/${id}/segments`, {
+  const d = await apiRequest(`/conversations/${id}/segments`, {
     method: "POST",
     body: {
       startMs: seg.start ?? null,

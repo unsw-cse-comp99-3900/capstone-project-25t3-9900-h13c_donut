@@ -1,28 +1,22 @@
 // src/api/dashboard.js
-const BASE_URL = "http://localhost:8000/api/v1";
-
-
-async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "include",
-  });
-  let data = null;
-  try { data = await res.json(); } catch (_) {}
-  if (!res.ok || (data && data.success === false)) {
-    const msg = data?.error?.message || data?.detail || `HTTP ${res.status}`;
-    return { ok: false, message: msg, code: data?.error?.code };
-  }
-  return { ok: true, data: data?.data ?? data };
-}
+// 使用统一的 API 配置
+import { apiRequest } from '../config/api.js';
 
 /**
- * verify upgrade key (backend)
- * 兼容原逻辑：key === "SECRET123" -> ok:true，否则 ok:false
+ * Verify and consume upgrade key (普通用户激活付费模型)
+ * @param {string} key - 密钥明文
+ * @returns {Promise<{ok: boolean, message?: string}>}
  */
 export async function verifyUpgradeKey(key) {
-  const r = await api("/admin/verify-key", { method: "POST", body: { key } });
-  return r.ok ? { ok: !!r.data?.ok } : { ok: false, message: r.message };
+  // 调用 consume=true 以真正激活密钥
+  const result = await apiRequest('/admin/verify-key', {
+    method: 'POST',
+    body: { key, consume: true },
+  });
+
+  if (result.ok && result.data?.ok) {
+    return { ok: true };
+  } else {
+    return { ok: false, message: result.message || '密钥无效或已使用' };
+  }
 }

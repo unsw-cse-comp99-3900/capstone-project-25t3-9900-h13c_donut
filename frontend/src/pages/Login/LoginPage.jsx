@@ -34,11 +34,18 @@ export default function LoginPage() {
     try {
       const resp = await login({ username, password });
       if (resp.ok) {
-        // store session (mock)
+        // store session
         localStorage.setItem("authToken", resp.token || "mock-token");
         localStorage.setItem("authUserId", resp.user?.id || resp.userId || username);
         localStorage.setItem("authUsername", resp.user?.username || username);
-        navigate("/dashboard");
+        localStorage.setItem("authUserRole", resp.user?.role || "user");
+
+        // 根据角色跳转：管理员 → /admin，普通用户 → /dashboard
+        if (resp.user?.role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/dashboard");
+        }
       } else {
         alert(resp.message || "Login failed.");
       }
