@@ -1,18 +1,18 @@
 // frontend/src/api/admin.js
-// 管理员相关 API 接口
+// Admin-related API endpoints
 
 import { apiRequest } from '../config/api.js';
 
 // ============================================================================
-// 一、用户管理接口
+// 1. User Management APIs
 // ============================================================================
 
 /**
- * 获取用户列表（支持搜索和分页）
- * @param {object} params - 查询参数
- * @param {string} [params.q] - 搜索关键词（username/email）
- * @param {number} [params.offset=0] - 分页偏移量
- * @param {number} [params.limit=20] - 每页数量
+ * Get user list (with search and pagination)
+ * @param {object} params - Query parameters
+ * @param {string} [params.q] - Search keyword (username/email)
+ * @param {number} [params.offset=0] - Pagination offset
+ * @param {number} [params.limit=20] - Items per page
  * @returns {Promise<{ok: boolean, data?: {items: Array, offset: number, limit: number, total: number}}>}
  */
 export async function listUsers({ q = '', offset = 0, limit = 20 } = {}) {
@@ -25,8 +25,8 @@ export async function listUsers({ q = '', offset = 0, limit = 20 } = {}) {
 }
 
 /**
- * 获取用户详情
- * @param {string} userId - 用户 ID
+ * Get user details
+ * @param {string} userId - User ID
  * @returns {Promise<{ok: boolean, data?: {user: object}}>}
  */
 export async function getUserDetail(userId) {
@@ -34,12 +34,12 @@ export async function getUserDetail(userId) {
 }
 
 /**
- * 更新用户信息（管理员）
- * @param {string} userId - 用户 ID
- * @param {object} data - 更新数据
- * @param {string} [data.username] - 新用户名
- * @param {string} [data.email] - 新邮箱
- * @param {string} [data.role] - 新角色（user/admin）
+ * Update user information (Admin only)
+ * @param {string} userId - User ID
+ * @param {object} data - Update data
+ * @param {string} [data.username] - New username
+ * @param {string} [data.email] - New email
+ * @param {string} [data.role] - New role (user/admin)
  * @returns {Promise<{ok: boolean, data?: {user: object}}>}
  */
 export async function updateUser(userId, data) {
@@ -50,8 +50,8 @@ export async function updateUser(userId, data) {
 }
 
 /**
- * 删除用户（管理员）
- * @param {string} userId - 用户 ID
+ * Delete user (Admin only)
+ * @param {string} userId - User ID
  * @returns {Promise<{ok: boolean}>}
  */
 export async function deleteUser(userId) {
@@ -61,9 +61,9 @@ export async function deleteUser(userId) {
 }
 
 /**
- * 重置用户密码（管理员）
- * @param {string} userId - 用户 ID
- * @param {string} newPassword - 新密码
+ * Reset user password (Admin only)
+ * @param {string} userId - User ID
+ * @param {string} newPassword - New password
  * @returns {Promise<{ok: boolean}>}
  */
 export async function resetUserPassword(userId, newPassword) {
@@ -74,16 +74,16 @@ export async function resetUserPassword(userId, newPassword) {
 }
 
 // ============================================================================
-// 二、密钥管理接口
+// 2. License Key Management APIs
 // ============================================================================
 
 /**
- * 批量生成密钥
- * @param {object} params - 生成参数
- * @param {number} params.count - 生成数量（1-200）
- * @param {string} [params.keyType='paid'] - 密钥类型
- * @param {number} [params.expireDays] - 过期天数（不传表示永久）
- * @param {string} [params.prefix='FAT'] - 密钥前缀
+ * Batch generate license keys
+ * @param {object} params - Generation parameters
+ * @param {number} params.count - Number of keys to generate (1-200)
+ * @param {string} [params.keyType='paid'] - Key type
+ * @param {number} [params.expireDays] - Expiry days (omit for permanent)
+ * @param {string} [params.prefix='FAT'] - Key prefix
  * @returns {Promise<{ok: boolean, data?: {keys: Array<{id: string, key: string, keyType: string, expiresAt: string}>}}>}
  */
 export async function batchGenerateKeys({ count, keyType = 'paid', expireDays, prefix = 'FAT' }) {
@@ -94,12 +94,12 @@ export async function batchGenerateKeys({ count, keyType = 'paid', expireDays, p
 }
 
 /**
- * 获取密钥列表
- * @param {object} params - 查询参数
- * @param {boolean} [params.is_used] - 过滤已使用/未使用
- * @param {string} [params.key_type] - 过滤密钥类型
- * @param {number} [params.offset=0] - 分页偏移量
- * @param {number} [params.limit=20] - 每页数量
+ * Get license key list
+ * @param {object} params - Query parameters
+ * @param {boolean} [params.is_used] - Filter by used/unused
+ * @param {string} [params.key_type] - Filter by key type
+ * @param {number} [params.offset=0] - Pagination offset
+ * @param {number} [params.limit=20] - Items per page
  * @returns {Promise<{ok: boolean, data?: {items: Array, offset: number, limit: number, total: number}}>}
  */
 export async function listLicenseKeys({ is_used, key_type, offset = 0, limit = 20 } = {}) {
@@ -113,8 +113,8 @@ export async function listLicenseKeys({ is_used, key_type, offset = 0, limit = 2
 }
 
 /**
- * 获取密钥详情
- * @param {string} keyId - 密钥 ID
+ * Get license key details
+ * @param {string} keyId - Key ID
  * @returns {Promise<{ok: boolean, data?: object}>}
  */
 export async function getLicenseKeyDetail(keyId) {
@@ -122,8 +122,8 @@ export async function getLicenseKeyDetail(keyId) {
 }
 
 /**
- * 删除密钥
- * @param {string} keyId - 密钥 ID
+ * Delete license key
+ * @param {string} keyId - Key ID
  * @returns {Promise<{ok: boolean}>}
  */
 export async function deleteLicenseKey(keyId) {
@@ -133,9 +133,9 @@ export async function deleteLicenseKey(keyId) {
 }
 
 /**
- * 验证密钥（普通用户使用）
- * @param {string} key - 密钥明文
- * @param {boolean} consume - 是否消费该密钥（true表示激活）
+ * Verify license key (for regular users)
+ * @param {string} key - Plain text key
+ * @param {boolean} consume - Whether to consume the key (true to activate)
  * @returns {Promise<{ok: boolean, data?: {ok: boolean}}>}
  */
 export async function verifyKey(key, consume = false) {

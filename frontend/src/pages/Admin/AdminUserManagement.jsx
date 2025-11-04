@@ -1,5 +1,5 @@
 // frontend/src/pages/Admin/AdminUserManagement.jsx
-// 用户管理页面
+// User Management Page
 
 import React, { useState, useEffect } from 'react';
 import { listUsers, updateUser, deleteUser, resetUserPassword } from '../../api/admin.js';
@@ -11,27 +11,26 @@ export default function AdminUserManagement() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 分页状态
+  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
   const pageSize = 20;
 
-  // 编辑弹窗状态
+  // Edit modal state
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({
     username: '',
     email: '',
-    role: 'user',
   });
 
-  // 删除确认弹窗
+  // Delete confirmation modal
   const [deletingUser, setDeletingUser] = useState(null);
 
-  // 重置密码弹窗
+  // Reset password modal
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
 
-  // 加载用户列表
+  // Load user list
   const loadUsers = async (page = 1, query = '') => {
     setLoading(true);
     setError('');
@@ -44,115 +43,113 @@ export default function AdminUserManagement() {
       setTotalUsers(result.data.total);
       setCurrentPage(page);
     } else {
-      setError(result.message || '加载用户列表失败');
+      setError(result.message || 'Failed to load user list');
     }
 
     setLoading(false);
   };
 
-  // 初始加载
+  // Initial load
   useEffect(() => {
     loadUsers(1, searchQuery);
   }, []);
 
-  // 搜索处理
+  // Search handler
   const handleSearch = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
     loadUsers(1, query);
   };
 
-  // 打开编辑弹窗
+  // Open edit modal
   const openEditModal = (user) => {
     setEditingUser(user);
     setEditForm({
       username: user.username,
       email: user.email || '',
-      role: user.role,
     });
   };
 
-  // 关闭编辑弹窗
+  // Close edit modal
   const closeEditModal = () => {
     setEditingUser(null);
-    setEditForm({ username: '', email: '', role: 'user' });
+    setEditForm({ username: '', email: '' });
   };
 
-  // 提交编辑
+  // Submit edit
   const handleEditSubmit = async () => {
     if (!editForm.username.trim()) {
-      alert('用户名不能为空');
+      alert('Username cannot be empty');
       return;
     }
 
     const result = await updateUser(editingUser.id, {
       username: editForm.username,
       email: editForm.email || null,
-      role: editForm.role,
     });
 
     if (result.ok) {
-      alert('用户信息更新成功');
+      alert('User information updated successfully');
       closeEditModal();
       loadUsers(currentPage, searchQuery);
     } else {
-      alert(`更新失败: ${result.message}`);
+      alert(`Update failed: ${result.message}`);
     }
   };
 
-  // 打开删除确认
+  // Open delete confirmation
   const openDeleteConfirm = (user) => {
     setDeletingUser(user);
   };
 
-  // 关闭删除确认
+  // Close delete confirmation
   const closeDeleteConfirm = () => {
     setDeletingUser(null);
   };
 
-  // 确认删除
+  // Confirm delete
   const handleDeleteConfirm = async () => {
     const result = await deleteUser(deletingUser.id);
 
     if (result.ok) {
-      alert('用户删除成功');
+      alert('User deleted successfully');
       closeDeleteConfirm();
       loadUsers(currentPage, searchQuery);
     } else {
-      alert(`删除失败: ${result.message}`);
+      alert(`Delete failed: ${result.message}`);
     }
   };
 
-  // 打开重置密码弹窗
+  // Open reset password modal
   const openResetPasswordModal = (user) => {
     setResetPasswordUser(user);
     setNewPassword('');
   };
 
-  // 关闭重置密码弹窗
+  // Close reset password modal
   const closeResetPasswordModal = () => {
     setResetPasswordUser(null);
     setNewPassword('');
   };
 
-  // 提交重置密码
+  // Submit reset password
   const handleResetPasswordSubmit = async () => {
     if (!newPassword || newPassword.length < 6) {
-      alert('密码长度至少6位');
+      alert('Password must be at least 6 characters');
       return;
     }
 
     const result = await resetUserPassword(resetPasswordUser.id, newPassword);
 
     if (result.ok) {
-      alert('密码重置成功');
+      alert('Password reset successfully');
       closeResetPasswordModal();
     } else {
-      alert(`重置失败: ${result.message}`);
+      alert(`Reset failed: ${result.message}`);
     }
   };
 
-  // 分页处理
+  // Pagination handling
   const totalPages = Math.ceil(totalUsers / pageSize);
   const canPrevPage = currentPage > 1;
   const canNextPage = currentPage < totalPages;
@@ -160,11 +157,11 @@ export default function AdminUserManagement() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2>用户管理</h2>
+        <h2>User Management</h2>
         <div className={styles.searchBox}>
           <input
             type="text"
-            placeholder="搜索用户（用户名/Email）"
+            placeholder="Search users (Username/Email)"
             value={searchQuery}
             onChange={handleSearch}
             className={styles.searchInput}
@@ -175,7 +172,7 @@ export default function AdminUserManagement() {
       {error && <div className={styles.error}>{error}</div>}
 
       {loading ? (
-        <div className={styles.loading}>加载中...</div>
+        <div className={styles.loading}>Loading...</div>
       ) : (
         <>
           <div className={styles.tableContainer}>
@@ -183,11 +180,11 @@ export default function AdminUserManagement() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>用户名</th>
-                  <th>邮箱</th>
-                  <th>角色</th>
-                  <th>创建时间</th>
-                  <th>操作</th>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Created At</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,28 +195,28 @@ export default function AdminUserManagement() {
                     <td>{user.email || '-'}</td>
                     <td>
                       <span className={user.role === 'admin' ? styles.badgeAdmin : styles.badgeUser}>
-                        {user.role === 'admin' ? '管理员' : '用户'}
+                        {user.role === 'admin' ? 'Admin' : 'User'}
                       </span>
                     </td>
-                    <td>{new Date(user.created_at).toLocaleString('zh-CN')}</td>
+                    <td>{new Date(user.created_at).toLocaleString('en-US')}</td>
                     <td className={styles.actions}>
                       <button
                         className={styles.btnEdit}
                         onClick={() => openEditModal(user)}
                       >
-                        编辑
+                        Edit
                       </button>
                       <button
                         className={styles.btnReset}
                         onClick={() => openResetPasswordModal(user)}
                       >
-                        重置密码
+                        Reset Password
                       </button>
                       <button
                         className={styles.btnDelete}
                         onClick={() => openDeleteConfirm(user)}
                       >
-                        删除
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -234,29 +231,29 @@ export default function AdminUserManagement() {
               onClick={() => loadUsers(currentPage - 1, searchQuery)}
               className={styles.paginationBtn}
             >
-              上一页
+              Previous
             </button>
             <span className={styles.paginationInfo}>
-              第 {currentPage} / {totalPages} 页（共 {totalUsers} 条）
+              Page {currentPage} / {totalPages} (Total {totalUsers})
             </span>
             <button
               disabled={!canNextPage}
               onClick={() => loadUsers(currentPage + 1, searchQuery)}
               className={styles.paginationBtn}
             >
-              下一页
+              Next
             </button>
           </div>
         </>
       )}
 
-      {/* 编辑用户弹窗 */}
+      {/* Edit User Modal */}
       {editingUser && (
         <div className={styles.modal}>
           <div className={styles.modalContent}>
-            <h3>编辑用户</h3>
+            <h3>Edit User</h3>
             <div className={styles.formGroup}>
-              <label>用户名</label>
+              <label>Username</label>
               <input
                 type="text"
                 value={editForm.username}
@@ -265,7 +262,7 @@ export default function AdminUserManagement() {
               />
             </div>
             <div className={styles.formGroup}>
-              <label>邮箱</label>
+              <label>Email</label>
               <input
                 type="email"
                 value={editForm.email}
@@ -273,70 +270,59 @@ export default function AdminUserManagement() {
                 className={styles.input}
               />
             </div>
-            <div className={styles.formGroup}>
-              <label>角色</label>
-              <select
-                value={editForm.role}
-                onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                className={styles.select}
-              >
-                <option value="user">用户</option>
-                <option value="admin">管理员</option>
-              </select>
-            </div>
             <div className={styles.modalActions}>
               <button className={styles.btnSubmit} onClick={handleEditSubmit}>
-                提交
+                Submit
               </button>
               <button className={styles.btnCancel} onClick={closeEditModal}>
-                取消
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 删除确认弹窗 */}
+      {/* Delete Confirmation Modal */}
       {deletingUser && (
         <div className={styles.modal}>
           <div className={styles.modalContent}>
-            <h3>确认删除</h3>
-            <p>确定删除用户 <strong>{deletingUser.username}</strong> 吗？</p>
-            <p className={styles.warning}>删除后不可恢复！</p>
+            <h3>Confirm Delete</h3>
+            <p>Are you sure you want to delete user <strong>{deletingUser.username}</strong>?</p>
+            <p className={styles.warning}>This action cannot be undone!</p>
             <div className={styles.modalActions}>
               <button className={styles.btnDelete} onClick={handleDeleteConfirm}>
-                确认删除
+                Confirm Delete
               </button>
               <button className={styles.btnCancel} onClick={closeDeleteConfirm}>
-                取消
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 重置密码弹窗 */}
+      {/* Reset Password Modal */}
       {resetPasswordUser && (
         <div className={styles.modal}>
           <div className={styles.modalContent}>
-            <h3>重置密码</h3>
-            <p>为用户 <strong>{resetPasswordUser.username}</strong> 设置新密码</p>
+            <h3>Reset Password</h3>
+            <p>Set new password for user <strong>{resetPasswordUser.username}</strong></p>
             <div className={styles.formGroup}>
-              <label>新密码（至少6位）</label>
+              <label>New Password (at least 6 characters)</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className={styles.input}
-                placeholder="请输入新密码"
+                placeholder="Enter new password"
               />
             </div>
             <div className={styles.modalActions}>
               <button className={styles.btnSubmit} onClick={handleResetPasswordSubmit}>
-                确认重置
+                Confirm Reset
               </button>
               <button className={styles.btnCancel} onClick={closeResetPasswordModal}>
-                取消
+                Cancel
               </button>
             </div>
           </div>
