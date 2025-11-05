@@ -377,7 +377,7 @@ export function createStreamClient({
       ? "audio/webm;codecs=opus"
       : "audio/webm";
 
-    // 录“处理后的流”，失败则录原始流
+    // 录"处理后的流"，失败则录原始流
     const streamForRecorder = procDest?.stream || mediaStream;
     mediaRecorder = new MediaRecorder(streamForRecorder, {
       mimeType: mime,

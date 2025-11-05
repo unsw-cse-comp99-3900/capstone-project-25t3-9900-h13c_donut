@@ -204,7 +204,19 @@
   color: #222;
 }
 .placeholder { color: #888; }
-.segment { margin-bottom: 14px; }
+.segment { 
+  margin-bottom: 14px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f9f9f9;
+  border-left: 3px solid transparent;
+  transition: border-color 0.2s;
+}
+/* ✅ 根据说话人添加边框颜色 */
+.segment[data-speaker="SPEAKER_00"] { border-left-color: #FF6B6B; }
+.segment[data-speaker="SPEAKER_01"] { border-left-color: #4ECDC4; }
+.segment[data-speaker="SPEAKER_02"] { border-left-color: #FFD93D; }
+
 .segmentMeta {
   display: flex;
   align-items: center;
@@ -212,15 +224,47 @@
   margin-bottom: 6px;
   color: #666;
   font-size: 13px;
+  flex-wrap: wrap;
+}
+/* ✅ 说话人标签样式 */
+.speakerTag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
 }
 .segmentAudio { height: 28px; }
 .segmentText { color: #222; }
 .segmentLive .segmentMeta { color: #0a0; }
 
+/* ✅ Web Speech API 预览文本样式 */
+.previewText {
+  color: #888;
+  font-style: italic;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+.previewBadge {
+  display: inline-block;
+  background: #4ECDC4;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 /* bottom left: Accent */
 .accentBox {
   position: absolute;
-  bottom: 20px;
+  bottom: 20px;  /* 恢复原来的位置 */
   left: 24px;
   display: flex;
   align-items: center;

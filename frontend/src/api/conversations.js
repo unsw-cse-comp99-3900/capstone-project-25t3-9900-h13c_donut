@@ -66,6 +66,7 @@ export async function getConversation(id) {
     end: t.endMs ?? Date.now(),
     transcript: t.text || "",
     audioUrl: t.audioUrl || null,
+    speakerId: t.speakerId || null,  // ✅ 添加 speakerId 字段
   }));
 
   return {

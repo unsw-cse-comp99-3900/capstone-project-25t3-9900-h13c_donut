@@ -68,6 +68,7 @@ async def get_conversation_detail(cid: str, user: User = Depends(get_current_use
         "endMs": t.end_ms,
         "text": t.text,
         "audioUrl": t.audio_url,
+        "speakerId": t.speaker_id,  # ✅ 返回说话人 ID
     } for t in trs]
     return {
         "success": True,

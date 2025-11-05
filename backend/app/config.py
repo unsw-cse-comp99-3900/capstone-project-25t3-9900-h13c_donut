@@ -27,18 +27,22 @@ class Settings(BaseModel):
     whisper_api_url: str = os.getenv("WHISPER_API_URL", "https://api.openai.com/v1/audio/transcriptions")
     whisper_model: str = os.getenv("WHISPER_MODEL", "whisper-1")
     
+    # Local Whisper Settings
+    # ⚠️ 由于本地 Whisper 存在死锁和堵塞问题，默认关闭，改用前端 Web Speech API 预览
+    use_local_whisper: bool = os.getenv("USE_LOCAL_WHISPER", "false").lower() in ("true", "1", "yes")
+    local_whisper_model: str = os.getenv("LOCAL_WHISPER_MODEL", "small")  # tiny, base, small, medium, large
+    
     # ElevenLabs API Settings (for TTS)
     eleven_api_key: str | None = os.getenv("ELEVENLABS_API_KEY")
     eleven_api_base: str = os.getenv("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1")
     default_voice_id: str = os.getenv("DEFAULT_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
     
     # Voice Mapping for accents
-    voice_map: dict[str, str] = {
-        "American English": os.getenv("VOICE_ID_AMERICAN", ""),
-        "Australia English": os.getenv("VOICE_ID_AUSTRALIA", ""),
-        "British English": os.getenv("VOICE_ID_BRITISH", ""),
-        "Chinese English": os.getenv("VOICE_ID_CHINESE", ""),
-        "India English": os.getenv("VOICE_ID_INDIA", ""),
-    }
+    # ✅ .env 中未设置时使用默认 Voice ID（ElevenLabs 预置声音）
+    voice_id_american: str = os.getenv("VOICE_ID_AMERICAN", "EXAVITQu4vr4xnSDxMaL")
+    voice_id_australia: str = os.getenv("VOICE_ID_AUSTRALIA", "IKne3meq5aSn9XLyUdCD")
+    voice_id_british: str = os.getenv("VOICE_ID_BRITISH", "JBFqnCBsd6RMkjVDRZzb")
+    voice_id_chinese: str = os.getenv("VOICE_ID_CHINESE", "hkfHEbBvdQFNX4uWHqRF")
+    voice_id_india: str = os.getenv("VOICE_ID_INDIA", "kL06KYMvPY56NluIQ72m")
 
 settings = Settings()  # 实例化配置

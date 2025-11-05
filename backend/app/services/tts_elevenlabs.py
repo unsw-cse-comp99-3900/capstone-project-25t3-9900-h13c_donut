@@ -1,37 +1,46 @@
-import os
 import httpx
 import asyncio
 from typing import AsyncGenerator
 from app.core.pubsub import channel
-
-ELEVEN_API = os.getenv("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1")
-ELEVEN_KEY = os.getenv("ELEVENLABS_API_KEY", "")
-
-VOICE_ID_AMERICAN  = os.getenv("VOICE_ID_AMERICAN",  "EXAVITQu4vr4xnSDxMaL")
-VOICE_ID_AUSTRALIA = os.getenv("VOICE_ID_AUSTRALIA", "IKne3meq5aSn9XLyUdCD")
-VOICE_ID_BRITISH   = os.getenv("VOICE_ID_BRITISH",   "JBFqnCBsd6RMkjVDRZzb")
-VOICE_ID_CHINESE   = os.getenv("VOICE_ID_CHINESE",   "hkfHEbBvdQFNX4uWHqRF")
-VOICE_ID_INDIA     = os.getenv("VOICE_ID_INDIA",     "kL06KYMvPY56NluIQ72m")
+from app.config import settings  # ✅ 统一使用 config.py 配置
 
 def _pick_voice_id_by_accent(accent: str) -> str:
+    """
+    根据口音选择对应的 Voice ID
+    
+    配置优先级：
+    1. .env 文件中的 VOICE_ID_AMERICAN 等
+    2. config.py 中的硬编码默认值
+    """
     a = (accent or "").lower()
-    if "australia" in a: return VOICE_ID_AUSTRALIA
-    if "british"   in a: return VOICE_ID_BRITISH
-    if "chinese"   in a: return VOICE_ID_CHINESE
-    if "india"     in a: return VOICE_ID_INDIA
-    return VOICE_ID_AMERICAN
-    # return "21m00Tcm4TlvDq8ikWAM"
+    if "australia" in a: 
+        return settings.voice_id_australia
+    if "british" in a: 
+        return settings.voice_id_british
+    if "chinese" in a: 
+        return settings.voice_id_chinese
+    if "india" in a: 
+        return settings.voice_id_india
+    # 默认美式英语
+    return settings.voice_id_american
 
 async def _stream_elevenlabs(text: str, voice_id: str) -> AsyncGenerator[bytes, None]:
+    """
+    调用 ElevenLabs API 进行流式 TTS
+    
+    配置来源：app.config.settings
+    - eleven_api_base: API 基础 URL
+    - eleven_api_key: API 密钥
+    """
     if not text or not text.strip():
         print("[tts] skip empty text")
         return
-    if not ELEVEN_KEY:
+    if not settings.eleven_api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is missing")
 
-    url = f"{ELEVEN_API}/text-to-speech/{voice_id}/stream?optimize_streaming_latency=2"
+    url = f"{settings.eleven_api_base}/text-to-speech/{voice_id}/stream?optimize_streaming_latency=2"
     headers = {
-        "xi-api-key": ELEVEN_KEY,
+        "xi-api-key": settings.eleven_api_key,
         "accept": "audio/mpeg",
         "content-type": "application/json",
     }

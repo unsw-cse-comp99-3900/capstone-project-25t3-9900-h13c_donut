@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.core.db import init_db, close_db
 
-from app.api.v1.routers import auth, accents, session as session_router, conversations, admin
+from app.api.v1.routers import auth, accents, session as session_router, conversations, admin, tts
 
 
 from app.api.v1.routers.ws_text import router as ws_text_router
@@ -116,6 +116,7 @@ app.include_router(accents.router, prefix="/api/v1")
 app.include_router(session_router.router, prefix="/api/v1")
 app.include_router(conversations.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(tts.router, prefix="/api/v1/tts", tags=["TTS"])  # ✅ 流式传译 TTS API
 
 # WebSocket（保持他原装装饰器路径）
 app.include_router(ws_text_router)

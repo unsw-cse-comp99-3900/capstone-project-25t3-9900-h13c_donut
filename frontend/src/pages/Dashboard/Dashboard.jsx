@@ -24,6 +24,19 @@ const ACCENTS = [
 ];
 const USE_LOCAL_SPEECH = (import.meta.env.VITE_USE_LOCAL_SPEECH || "0") === "1";
 
+// ✅ 说话人颜色映射
+const SPEAKER_COLORS = {
+  "SPEAKER_00": "#FF6B6B",  // 红色
+  "SPEAKER_01": "#4ECDC4",  // 青色
+  "SPEAKER_02": "#FFD93D",  // 黄色
+};
+
+const SPEAKER_NAMES = {
+  "SPEAKER_00": "Speaker 1",
+  "SPEAKER_01": "Speaker 2",
+  "SPEAKER_02": "Speaker 3",
+};
+
 /** Simple eye icon */
 function EyeIcon({ open = false }) {
   return open ? (
@@ -207,11 +220,19 @@ export default function Dashboard() {
   const transcriptBoxRef = useRef(null);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
+  const [previewText, setPreviewText] = useState("");  // ✅ Web Speech API 预览文本
+  const streamingTranslation = true;  // ✅ 流式传译默认开启（去掉开关）
   const currentSegIdRef = useRef(null);
   const currentConvIdRef = useRef(null);   // 当前段落对应的会话 ID（用于收尾）
   const segAudioUrlRef = useRef(null);
   const streamRef = useRef(null);
   const finishOnceRef = useRef(false);     // 保证每段只 finish 一次
+  const speechRecognitionRef = useRef(null);  // ✅ Web Speech Recognition 实例
+  const ttsQueueRef = useRef([]);  // ✅ TTS 音频播放队列
+  const ttsPlayingRef = useRef(false);  // ✅ TTS 是否正在播放
+  const ttsDebounceTimerRef = useRef(null);  // ✅ TTS 防抖计时器
+  const lastSpokenTextRef = useRef('');  // ✅ 上一次已播放的文本（用于增量检测）
+  const lastTtsTimeRef = useRef(0);  // ✅ 上次 TTS 触发时间（用于频率限制）
 
   const startSegment = async () => {
     if (!activeConv) return null;
@@ -348,16 +369,303 @@ export default function Dashboard() {
     await streamRef.current.startSegment();
     await streamRef.current.startMic?.();
     setRecording(true);
+    
+    // ✅ 启动 Web Speech API 实时预览
+    startWebSpeechPreview();
   };
 
   const micStop = async () => {
     setRecording(false);
+    
+    // ✅ 停止 Web Speech API
+    stopWebSpeechPreview();
+    
     try { await streamRef.current?.stopMic?.(); } catch {}
     try { await streamRef.current?.stopSegment?.(); } catch {}
     // 保持 WS 连接，让后端还能把 final 文本和 TTS 音频推回来
   };
 
   const onMicToggle = () => (recording ? micStop() : micStart());
+
+  /** ===== 流式传译 TTS 请求 ===== */
+  const requestStreamingTts = async (text) => {
+    if (!text || !currentConvIdRef.current) return;
+    
+    try {
+      console.log(`[Streaming TTS] Requesting for: "${text.substring(0, 50)}..."`);
+      
+      // 调用后端 TTS API（确保路径正确）
+      const response = await fetch('http://localhost:8000/api/v1/tts/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          text: text,
+          accent: selectedAccent,
+          model: selectedModel,
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error('[Streaming TTS] Request failed:', response.status);
+        return;
+      }
+      
+      const audioBlob = await response.blob();
+      console.log(`[Streaming TTS] Received audio: ${audioBlob.size} bytes`);
+      
+      // 加入播放队列
+      enqueueTts(audioBlob);
+      
+    } catch (err) {
+      console.error('[Streaming TTS] Error:', err);
+    }
+  };
+
+  /** ===== TTS 音频队列播放 ===== */
+  const playTtsAudio = async (audioBlob) => {
+    return new Promise((resolve) => {
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.volume = volume;
+      
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      
+      audio.onerror = () => {
+        console.error('[TTS Queue] Audio playback error');
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      
+      audio.play().catch((err) => {
+        console.error('[TTS Queue] Play failed:', err);
+        resolve();
+      });
+    });
+  };
+  
+  const processTtsQueue = async () => {
+    if (ttsPlayingRef.current) return;  // 已在播放
+    if (ttsQueueRef.current.length === 0) return;  // 队列为空
+    
+    ttsPlayingRef.current = true;
+    
+    while (ttsQueueRef.current.length > 0) {
+      const audioBlob = ttsQueueRef.current.shift();
+      await playTtsAudio(audioBlob);
+    }
+    
+    ttsPlayingRef.current = false;
+  };
+  
+  const enqueueTts = (audioBlob) => {
+    ttsQueueRef.current.push(audioBlob);
+    processTtsQueue();  // 尝试开始播放
+  };
+
+  /** ===== Web Speech API 实时预览 ===== */
+  const startWebSpeechPreview = () => {
+    // 清除旧的防抖计时器
+    if (ttsDebounceTimerRef.current) {
+      clearTimeout(ttsDebounceTimerRef.current);
+      ttsDebounceTimerRef.current = null;
+    }
+    // 重置已播放文本和触发时间（开始新的录音会话）
+    lastSpokenTextRef.current = '';
+    lastTtsTimeRef.current = 0;
+    
+    // 检查浏览器支持
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn("[Web Speech] Not supported in this browser");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;  // 持续识别
+      recognition.interimResults = true;  // 返回临时结果
+      recognition.lang = 'en-US';  // 可以根据 selectedAccent 动态设置
+      
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        // ✅ 显示预览文本（淡色、斜体）
+        if (interimTranscript) {
+          setPreviewText(interimTranscript);
+          
+          // ✅ 流式传译优化：使用 interim 结果 + 防抖触发 TTS
+          if (streamingTranslation) {
+            // 清除之前的防抖计时器
+            if (ttsDebounceTimerRef.current) {
+              clearTimeout(ttsDebounceTimerRef.current);
+            }
+            
+            // 设置新的防抖计时器（500ms 平衡响应速度和防重复）
+            ttsDebounceTimerRef.current = setTimeout(() => {
+              const fullText = interimTranscript.trim();
+              
+              // ✅ 检查文本长度（至少 8 字符，快速响应）
+              if (!fullText || fullText.length < 8) return;
+              
+              // ✅ 频率限制：距离上次触发至少 1000ms
+              const now = Date.now();
+              if (now - lastTtsTimeRef.current < 1000) {
+                console.log(`[Streaming TTS] Rate limited, waiting...`);
+                return;
+              }
+              
+              // ✅ 增量检测：只播放新增部分
+              const lastSpoken = lastSpokenTextRef.current;
+              
+              // 文本归一化（去除标点和多余空格，用于比较）
+              const normalize = (text) => text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+              const normalizedFull = normalize(fullText);
+              const normalizedLast = normalize(lastSpoken);
+              
+              if (normalizedFull.startsWith(normalizedLast) && fullText.length > lastSpoken.length) {
+                // 新文本是旧文本的延续
+                const newPart = fullText.slice(lastSpoken.length).trim();
+                
+                // 新增部分至少 8 个字符才播放（更保守）
+                if (newPart.length >= 8) {
+                  console.log(`[Streaming TTS] Incremental: "${newPart.substring(0, 30)}..." (was: "${lastSpoken.substring(0, 20)}...")`);
+                  lastSpokenTextRef.current = fullText;
+                  lastTtsTimeRef.current = now;
+                  requestStreamingTts(newPart);
+                } else {
+                  console.log(`[Streaming TTS] Incremental too short (${newPart.length} chars), skipping`);
+                }
+              } else if (normalizedFull !== normalizedLast && fullText.length >= 8) {
+                // 完全不同的文本，且足够长
+                console.log(`[Streaming TTS] Full: "${fullText.substring(0, 30)}..."`);
+                lastSpokenTextRef.current = fullText;
+                lastTtsTimeRef.current = now;
+                requestStreamingTts(fullText);
+              }
+            }, 500);  // 500ms 防抖延迟（平衡速度和准确性）
+          }
+        }
+        
+        // ✅ 最终识别结果累积到 liveTranscript
+        if (finalTranscript) {
+          setPreviewText('');  // 清除预览
+          
+          // 清除防抖计时器（final 结果已到达）
+          if (ttsDebounceTimerRef.current) {
+            clearTimeout(ttsDebounceTimerRef.current);
+            ttsDebounceTimerRef.current = null;
+          }
+          
+          setLiveTranscript((prev) => {
+            const newText = prev + finalTranscript;
+            return newText;
+          });
+          
+          // ✅ Final 结果：跳过 TTS，避免重复（interim 已经实时播放）
+          // 只在特殊情况下播放 final（如 interim 没有触发过）
+          if (streamingTranslation && finalTranscript.trim()) {
+            const fullFinalText = finalTranscript.trim();
+            const lastSpoken = lastSpokenTextRef.current;
+            const now = Date.now();
+            const timeSinceLastTts = now - lastTtsTimeRef.current;
+            
+            // ⚠️ 策略：如果最近 2 秒内触发过 TTS，完全跳过 final（避免重复）
+            if (timeSinceLastTts < 2000) {
+              console.log(`[Streaming TTS] Final skipped (interim already played ${timeSinceLastTts}ms ago)`);
+              // 只更新记录，不触发 TTS
+              lastSpokenTextRef.current = fullFinalText;
+              return;
+            }
+            
+            // 只有在很久没有 TTS 的情况下，才播放 final（补救机制）
+            if (fullFinalText.length > lastSpoken.length + 10) {
+              // Final 文本明显比已播放的长很多（>10 字符），可能 interim 丢失了
+              const remaining = fullFinalText.slice(lastSpoken.length).trim();
+              if (remaining.length >= 10) {
+                console.log(`[Streaming TTS] Final补救: "${remaining.substring(0, 30)}..." (likely missed interim)`);
+                lastSpokenTextRef.current = fullFinalText;
+                lastTtsTimeRef.current = now;
+                requestStreamingTts(remaining);
+              }
+            } else {
+              console.log(`[Streaming TTS] Final complete, no significant new content`);
+              lastSpokenTextRef.current = fullFinalText;
+            }
+          }
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        console.error('[Web Speech] Error:', event.error);
+        if (event.error === 'no-speech') {
+          // 用户没说话，忽略
+          return;
+        }
+        // 其他错误尝试重启
+        setTimeout(() => {
+          if (recording && speechRecognitionRef.current) {
+            try { recognition.start(); } catch {}
+          }
+        }, 1000);
+      };
+      
+      recognition.onend = () => {
+        // 如果还在录音，自动重启（连续识别）
+        if (recording && speechRecognitionRef.current === recognition) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.warn('[Web Speech] Restart failed:', e);
+          }
+        }
+      };
+      
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+      console.log('[Web Speech] Started');
+    } catch (err) {
+      console.error('[Web Speech] Failed to start:', err);
+    }
+  };
+  
+  const stopWebSpeechPreview = () => {
+    // 清除防抖计时器
+    if (ttsDebounceTimerRef.current) {
+      clearTimeout(ttsDebounceTimerRef.current);
+      ttsDebounceTimerRef.current = null;
+    }
+    
+    // 重置已播放文本和触发时间（停止录音，准备下次新会话）
+    lastSpokenTextRef.current = '';
+    lastTtsTimeRef.current = 0;
+    
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+        speechRecognitionRef.current = null;
+        setPreviewText('');  // 清除预览文本
+        console.log('[Web Speech] Stopped');
+      } catch (err) {
+        console.error('[Web Speech] Failed to stop:', err);
+      }
+    }
+  };
 
   /** ===== upgrade / logout / change password ===== */
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -492,22 +800,47 @@ export default function Dashboard() {
         </div>
 
         <div className={styles.transcript} ref={transcriptBoxRef}>
-          {activeConv?.segments?.map((s) => (
-            <div key={s.id} className={styles.segment}>
-              <div className={styles.segmentMeta}>
-                <span>
-                  {new Date(s.start).toLocaleTimeString()} — {s.end ? new Date(s.end).toLocaleTimeString() : "…"}
-                </span>
-                {s.audioUrl && <audio controls autoPlay src={s.audioUrl} className={styles.segmentAudio} />}
+          {activeConv?.segments?.map((s) => {
+            // ✅ 获取说话人信息
+            const speakerId = s.speakerId || null;
+            const speakerColor = speakerId ? SPEAKER_COLORS[speakerId] : null;
+            const speakerName = speakerId ? SPEAKER_NAMES[speakerId] : null;
+            
+            return (
+              <div 
+                key={s.id} 
+                className={styles.segment}
+                data-speaker={speakerId}
+              >
+                <div className={styles.segmentMeta}>
+                  {/* ✅ 显示说话人标签 */}
+                  {speakerId && (
+                    <span 
+                      className={styles.speakerTag}
+                      style={{ backgroundColor: speakerColor }}
+                    >
+                      {speakerName}
+                    </span>
+                  )}
+                  <span>
+                    {new Date(s.start).toLocaleTimeString()} — {s.end ? new Date(s.end).toLocaleTimeString() : "…"}
+                  </span>
+                  {s.audioUrl && <audio controls autoPlay src={s.audioUrl} className={styles.segmentAudio} />}
+                </div>
+                {s.transcript ? <div className={styles.segmentText}>{s.transcript}</div> : null}
               </div>
-              {s.transcript ? <div className={styles.segmentText}>{s.transcript}</div> : null}
-            </div>
-          ))}
+            );
+          })}
           {recording ? (
             <div className={`${styles.segment} ${styles.segmentLive}`}>
-              <div className={styles.segmentMeta}><span>Recording…</span></div>
+              <div className={styles.segmentMeta}>
+                <span>Recording…</span>
+                {previewText && <span className={styles.previewBadge}>Preview</span>}
+              </div>
               <div className={styles.segmentText}>
-                {liveTranscript}<span style={{ opacity: 0.5 }}>{interimText}</span>
+                {liveTranscript}
+                {previewText && <span className={styles.previewText}>{previewText}</span>}
+                {interimText && <span style={{ opacity: 0.5 }}>{interimText}</span>}
               </div>
             </div>
           ) : !activeConv?.segments?.length ? (
