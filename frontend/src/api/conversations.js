@@ -1,56 +1,64 @@
 // src/api/conversations.js
-const BASE_URL = "http://localhost:8000/api/v1"; // 用 localhost，保证 Cookie 同站
+// Conversation API - Uses unified API configuration
 
-async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "include",
-  });
-  let data = null;
-  try { data = await res.json(); } catch (_) {}
-  if (!res.ok || (data && data.success === false)) {
-    const msg = data?.error?.message || data?.detail || `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  return data?.data ?? data;
-}
+import { apiRequest } from '../config/api.js';
 
-/** 
+/**
  * listConversations
- * 返回：Array<{ id, title, createdAt }>
+ * Returns: Array<{ id, title, createdAt }>
  */
 export async function listConversations() {
-  const d = await apiRequest(`/conversations?offset=0&limit=100`);
-  const items = (d.items || []).map(c => ({
+  const result = await apiRequest(`/conversations?offset=0&limit=100`);
+
+  if (!result.ok) {
+    console.error('Failed to list conversations:', result.message);
+    return [];
+  }
+
+  const items = (result.data.items || []).map(c => ({
     id: c.id,
     title: c.title || "",
     createdAt: c.startedAt ? Date.parse(c.startedAt) : Date.now(),
   }));
-  return items; // ← 兼容 mockDB：直接是数组
+
+  return items;
 }
 
-/** 
+/**
  * createConversation({ title? })
- * 返回：{ id, title, createdAt, segments: [] }
+ * Returns: { id, title, createdAt, segments: [] }
  */
 export async function createConversation({ title } = {}) {
-  const d = await apiRequest(`/conversations`, { method: "POST", body: { title } });
+  const result = await apiRequest(`/conversations`, {
+    method: "POST",
+    body: { title }
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || 'Failed to create conversation');
+  }
+
+  const d = result.data;
   return {
     id: d.id,
     title: d.title || "",
     createdAt: d.createdAtMs ?? Date.now(),
     segments: [],
-  }; // ← 兼容 mockDB：直接对象
+  };
 }
 
-/** 
+/**
  * getConversation(id) / loadConversation(id)
- * 返回：{ id, title, createdAt, segments: [...] }
+ * Returns: { id, title, createdAt, segments: [...] }
  */
 export async function getConversation(id) {
-  const d = await apiRequest(`/conversations/${id}`);
+  const result = await apiRequest(`/conversations/${id}`);
+
+  if (!result.ok) {
+    throw new Error(result.message || 'Failed to get conversation');
+  }
+
+  const d = result.data;
   const conv = d.conversation || {};
   const segments = (d.transcripts || []).map(t => ({
     id: `s_${t.seq}`,
@@ -59,6 +67,7 @@ export async function getConversation(id) {
     transcript: t.text || "",
     audioUrl: t.audioUrl || null,
   }));
+
   return {
     id: conv.id,
     title: conv.title || "",
@@ -67,34 +76,49 @@ export async function getConversation(id) {
   };
 }
 
-// 兼容旧命名
+// Compatibility alias
 export const loadConversation = getConversation;
 
-/** 
+/**
  * renameConversation(id, title)
- * 返回：true
+ * Returns: true
  */
 export async function renameConversation(id, title) {
-  await apiRequest(`/conversations/${id}`, { method: "PATCH", body: { title } });
-  return true; // ← 兼容 mockDB
+  const result = await apiRequest(`/conversations/${id}`, {
+    method: "PATCH",
+    body: { title }
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || 'Failed to rename conversation');
+  }
+
+  return true;
 }
 
-/** 
+/**
  * deleteConversation(id)
- * 返回：true
+ * Returns: true
  */
 export async function deleteConversation(id) {
-  await apiRequest(`/conversations/${id}`, { method: "DELETE" });
-  return true; // ← 兼容 mockDB
+  const result = await apiRequest(`/conversations/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || 'Failed to delete conversation');
+  }
+
+  return true;
 }
 
-/** 
+/**
  * appendSegment(id, seg)
  * seg: { start, end, transcript, audioUrl }
- * 返回：{ id, start, end, transcript, audioUrl }
+ * Returns: { id, start, end, transcript, audioUrl }
  */
 export async function appendSegment(id, seg) {
-  const d = await apiRequest(`/conversations/${id}/segments`, {
+  const result = await apiRequest(`/conversations/${id}/segments`, {
     method: "POST",
     body: {
       startMs: seg.start ?? null,
@@ -103,11 +127,17 @@ export async function appendSegment(id, seg) {
       audioUrl: seg.audioUrl ?? null,
     },
   });
+
+  if (!result.ok) {
+    throw new Error(result.message || 'Failed to append segment');
+  }
+
+  const d = result.data;
   return {
     id: d.id,
     start: d.startMs ?? Date.now(),
     end: d.endMs ?? Date.now(),
     transcript: d.text || "",
     audioUrl: d.audioUrl || null,
-  }; // ← 兼容 mockDB
+  };
 }
