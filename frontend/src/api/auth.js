@@ -43,9 +43,9 @@ export async function resetPassword({ userId, newPassword }) {
 
 /**
  * Change password for logged-in user
+ * Backend validates current user via Cookie/JWT, no userId needed
  */
-export async function changePassword({ userId, newPassword }) {
-  // 后端根据 Cookie/JWT 验证当前用户，无需传 userId，但保持前端签名不变
+export async function changePassword({ newPassword }) {
   const r = await apiRequest("/auth/change-password", { method: "POST", body: { newPassword } });
   return r.ok ? { ok: true } : r;
 }

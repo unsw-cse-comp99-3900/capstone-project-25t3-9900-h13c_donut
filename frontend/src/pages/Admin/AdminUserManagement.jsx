@@ -49,9 +49,9 @@ export default function AdminUserManagement() {
     setLoading(false);
   };
 
-  // Initial load
+  // Initial load - Load all users on component mount
   useEffect(() => {
-    loadUsers(1, searchQuery);
+    loadUsers(1, '');
   }, []);
 
   // Search handler

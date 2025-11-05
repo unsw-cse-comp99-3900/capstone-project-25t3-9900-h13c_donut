@@ -63,9 +63,10 @@ export default function AdminKeyManagement() {
     setLoadingKeys(false);
   };
 
-  // Initial load
+  // Initial load - Load all keys on component mount
   useEffect(() => {
-    loadKeys(1, statusFilter);
+    loadKeys(1, 'all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle form input

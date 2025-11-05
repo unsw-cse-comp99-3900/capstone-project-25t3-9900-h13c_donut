@@ -1,6 +1,5 @@
-const WS_UPLOAD_URL = import.meta.env.VITE_WS_UPLOAD_URL;
-const WS_TEXT_URL   = import.meta.env.VITE_WS_TEXT_URL;
-const WS_TTS_URL    = import.meta.env.VITE_WS_TTS_URL;
+// Import WebSocket URLs from unified API configuration
+import { WS_UPLOAD_URL, WS_TEXT_URL, WS_TTS_URL } from '../config/api.js';
 
 export function createStreamClient({
   conversationId,
@@ -105,7 +104,7 @@ export function createStreamClient({
     if (!sourceBuffer || sourceBuffer.updating) return;
     if (mseQueue.length === 0) {
       if (mseEnded && mediaSource && mediaSource.readyState === "open") {
-        try { mediaSource.endOfStream(); } catch {}
+        try { mediaSource.endOfStream(); } catch { /* Ignore if already ended */ }
       }
       return;
     }
@@ -125,12 +124,12 @@ export function createStreamClient({
   function mseTearDown() {
     try {
       if (sourceBuffer) sourceBuffer.abort();
-    } catch {}
+    } catch { /* Ignore if already aborted */ }
     try {
       if (mediaSource && mediaSource.readyState === "open") {
         mediaSource.endOfStream();
       }
-    } catch {}
+    } catch { /* Ignore if already ended */ }
     sourceBuffer = null;
     mediaSource = null;
     mseQueue = [];
@@ -395,7 +394,7 @@ export function createStreamClient({
   }
 
   async function stopMic() {
-    try { mediaRecorder?.stop(); } catch {}
+    try { mediaRecorder?.stop(); } catch { /* Ignore if already stopped */ }
     mediaStream?.getTracks().forEach((t) => t.stop());
     mediaRecorder = null;
     mediaStream = null;
@@ -403,29 +402,29 @@ export function createStreamClient({
     // 清理采集侧处理资源
     procDest = null;
     if (procAudioCtx) {
-      try { await procAudioCtx.close(); } catch {}
+      try { await procAudioCtx.close(); } catch { /* Ignore if already closed */ }
       procAudioCtx = null;
     }
   }
 
   async function close() {
-    try { textWS?.close(); } catch {}
-    try { ttsWS?.close(); } catch {}
-    try { uploadWS?.close(); } catch {}
+    try { textWS?.close(); } catch { /* Ignore if already closed */ }
+    try { ttsWS?.close(); } catch { /* Ignore if already closed */ }
+    try { uploadWS?.close(); } catch { /* Ignore if already closed */ }
 
     // 释放 MSE
-    try { mseTearDown(); } catch {}
+    try { mseTearDown(); } catch { /* Ignore teardown errors */ }
 
     // 释放 TTS 退化回放用的 AudioContext（与采集侧不同）
     if (audioContext) {
-      try { await audioContext.close(); } catch {}
+      try { await audioContext.close(); } catch { /* Ignore if already closed */ }
       audioContext = null;
     }
 
     // 释放采集侧处理资源（防止未调用 stopMic 就 close 的情况）
     procDest = null;
     if (procAudioCtx) {
-      try { await procAudioCtx.close(); } catch {}
+      try { await procAudioCtx.close(); } catch { /* Ignore if already closed */ }
       procAudioCtx = null;
     }
   }

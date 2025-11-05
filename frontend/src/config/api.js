@@ -1,19 +1,19 @@
 // frontend/src/config/api.js
-// 统一的 API 配置文件，支持环境变量
+// Unified API configuration with environment variable support
 
 /**
  * API Base URL
- * 优先使用环境变量 VITE_API_BASE_URL，否则使用默认值
+ * Uses environment variable VITE_API_BASE_URL, or defaults to localhost
  */
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 /**
- * API v1 路径前缀
+ * API v1 path prefix
  */
 export const API_V1_PREFIX = '/api/v1';
 
 /**
- * 完整的 API Base URL (包含版本前缀)
+ * Complete API Base URL (with version prefix)
  */
 export const API_BASE = `${API_BASE_URL}${API_V1_PREFIX}`;
 
@@ -26,9 +26,9 @@ export const WS_TEXT_URL = `${WS_BASE_URL}/ws/asr-text`;
 export const WS_TTS_URL = `${WS_BASE_URL}/ws/tts-audio`;
 
 /**
- * API 请求通用方法
- * @param {string} path - API 路径（不包含 base URL）
- * @param {object} options - fetch 选项
+ * Universal API request method
+ * @param {string} path - API path (without base URL)
+ * @param {object} options - Fetch options
  * @returns {Promise<{ok: boolean, data?: any, message?: string, code?: string}>}
  */
 export async function apiRequest(path, { method = 'GET', body, headers = {} } = {}) {
@@ -36,7 +36,7 @@ export async function apiRequest(path, { method = 'GET', body, headers = {} } = 
 
   const fetchOptions = {
     method,
-    credentials: 'include', // 重要：带上 HttpOnly Cookie
+    credentials: 'include', // Important: Include HttpOnly cookies
     headers: {
       ...headers,
     },
@@ -53,8 +53,8 @@ export async function apiRequest(path, { method = 'GET', body, headers = {} } = 
 
     try {
       data = await res.json();
-    } catch (_) {
-      // 响应可能不是 JSON
+    } catch {
+      // Response might not be JSON (e.g., 204 No Content, plain text)
     }
 
     if (!res.ok || (data && data.success === false)) {

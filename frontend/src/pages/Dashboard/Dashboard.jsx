@@ -382,7 +382,7 @@ export default function Dashboard() {
   const confirmChangePassword = async () => {
     if (!newPwd) { alert("Please enter a new password."); return; }
     try {
-      const res = await changePassword({ userId, newPassword: newPwd });
+      const res = await changePassword({ newPassword: newPwd });
       if (res?.ok) {
         setPwdOpen(false);
         setNewPwd("");
