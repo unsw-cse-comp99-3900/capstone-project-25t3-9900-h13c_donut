@@ -24,9 +24,24 @@ def _pick_voice_id_by_accent(accent: str) -> str:
     # 默认美式英语
     return settings.voice_id_american
 
-async def _stream_elevenlabs(text: str, voice_id: str) -> AsyncGenerator[bytes, None]:
+async def _stream_elevenlabs(
+    text: str, 
+    voice_id: str,
+    stability: float = 0.88,
+    similarity_boost: float = 0.73,
+    style: float = 0.73,
+    use_speaker_boost: bool = True
+) -> AsyncGenerator[bytes, None]:
     """
     调用 ElevenLabs API 进行流式 TTS
+    
+    参数：
+    - text: 要合成的文本
+    - voice_id: ElevenLabs 声音 ID
+    - stability: 稳定性 (0-1)，越高越稳定，越低越富有表现力
+    - similarity_boost: 相似度增强 (0-1)，与原始声音的相似度
+    - style: 风格夸张度 (0-1)，语音的表现力
+    - use_speaker_boost: 是否启用说话者增强
     
     配置来源：app.config.settings
     - eleven_api_base: API 基础 URL
@@ -46,11 +61,16 @@ async def _stream_elevenlabs(text: str, voice_id: str) -> AsyncGenerator[bytes, 
     }
     payload = {
         "text": text,
-        "model_id": "eleven_monolingual_v1",
-        "voice_settings": {"stability": 0.4, "similarity_boost": 0.7},
+        "model_id": "eleven_multilingual_v2",  # 使用更先进的多语言模型
+        "voice_settings": {
+            "stability": stability,
+            "similarity_boost": similarity_boost,
+            "style": style,
+            "use_speaker_boost": use_speaker_boost
+        },
     }
 
-    print(f"[tts] HTTP POST {url} voice={voice_id}")
+    print(f"[tts] HTTP POST {url} voice={voice_id}, stability={stability}, similarity={similarity_boost}, style={style}")
     async with httpx.AsyncClient(timeout=None) as client:
         async with client.stream("POST", url, headers=headers, json=payload) as resp:
             resp.raise_for_status()
@@ -66,9 +86,16 @@ async def _synth_and_stream_common(conv_id: str, text: str, accent: str):
     print(f"[tts→ws] start -> {conv_id}")
 
     try:
-        # 2) 流式分片
+        # 2) 流式分片（使用优化后的声音参数）
         got_any = False
-        async for chunk in _stream_elevenlabs(text, voice_id):
+        async for chunk in _stream_elevenlabs(
+            text=text,
+            voice_id=voice_id,
+            stability=0.88,
+            similarity_boost=0.73,
+            style=0.73,
+            use_speaker_boost=True
+        ):
             got_any = True
             await channel.pub_tts_bytes(conv_id, chunk)
         print(f"[tts] stream done, got_any={got_any}")

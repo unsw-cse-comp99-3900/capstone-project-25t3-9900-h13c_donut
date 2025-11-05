@@ -120,9 +120,17 @@ async def _generate_elevenlabs_audio(text: str, accent: str) -> bytes:
     
     print(f"[TTS API][ElevenLabs] 合成语音: text='{text[:50]}...', accent={accent}, voice_id={voice_id}")
     
-    # 收集音频到内存
+    # ✅ 使用优化后的声音参数（根据网页设置）
+    # Speed 通过 model 控制，这里主要调整声音质量
     audio_chunks = []
-    async for chunk in _stream_elevenlabs(text, voice_id):
+    async for chunk in _stream_elevenlabs(
+        text=text,
+        voice_id=voice_id,
+        stability=0.88,           # 稳定性（更稳定，减少变化）
+        similarity_boost=0.73,    # 相似度增强
+        style=0.73,               # 风格夸张度（适中表现力）
+        use_speaker_boost=True    # 启用说话者增强
+    ):
         audio_chunks.append(chunk)
     
     # 合并音频数据
