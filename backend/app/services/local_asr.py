@@ -51,7 +51,7 @@ class LocalWhisperService(ASRService):
     def is_available(self) -> bool:
         """检查本地 Whisper 是否可用"""
         return self._available and self.model is not None
-    
+
     def _transcribe_sync(
         self, 
         audio_path: str,

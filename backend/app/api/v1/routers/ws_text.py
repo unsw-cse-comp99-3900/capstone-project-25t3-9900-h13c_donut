@@ -18,10 +18,8 @@ async def ws_asr_text(ws: WebSocket):
                 conv_id = msg.get("conversationId")
                 await channel.sub_text(conv_id, ws)
                 print("[ws_text] subscribed", conv_id)
-                # 回 ready（可选）
+                # 回 ready
                 await ws.send_text(json.dumps({"type": "ready", "conversationId": conv_id}))
-                # 立刻发一条 ping，验证前端 onmessage 正常
-                await ws.send_text(json.dumps({"type":"interim","text":"__ping__","ts":0}))
     except WebSocketDisconnect:
         if conv_id:
             channel.unsub_text(conv_id, ws)
