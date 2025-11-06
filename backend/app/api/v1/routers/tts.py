@@ -19,7 +19,7 @@ class TtsRequest(BaseModel):
     model: str = "free"  # "free" = MelonTTS (本地), "paid" = ElevenLabs (API)
 
 
-async def _generate_melotts_audio(text: str, accent: str) -> bytes:
+async def _generate_melotts_audio(text: str, accent: str) -> tuple[bytes, str]:
     """
     使用 MelonTTS 生成音频（本地模型）
     
@@ -28,7 +28,7 @@ async def _generate_melotts_audio(text: str, accent: str) -> bytes:
         accent: 口音类型
     
     Returns:
-        bytes: MP3 音频数据
+        tuple[bytes, str]: (音频数据, MIME类型)
     """
     from app.services.tts_elevenlabs import (
         _get_melotts_model,
@@ -89,9 +89,10 @@ async def _generate_melotts_audio(text: str, accent: str) -> bytes:
         audio_segment.export(mp3_buffer, format="mp3", bitrate="128k")
         mp3_buffer.seek(0)
         audio_bytes = mp3_buffer.read()
-        print(f"[TTS API][MelonTTS] MP3 转换完成，大小: {len(audio_bytes)} bytes")
-        return audio_bytes
-    except ImportError:
+        print(f"[TTS API][MelonTTS] MP3 转换完成，大小: {len(audio_bytes)} bytes, sample_rate={sample_rate}")
+        return audio_bytes, "audio/mpeg"
+    except ImportError as e:
+        print(f"[TTS API][MelonTTS] ⚠️ pydub 不可用 ({e})，退化到 WAV 格式")
         # 退化到 WAV
         import soundfile as sf
         audio = audio.astype(np.float32)
@@ -99,11 +100,22 @@ async def _generate_melotts_audio(text: str, accent: str) -> bytes:
         sf.write(wav_buffer, audio, sample_rate, format='WAV', subtype='PCM_16')
         wav_buffer.seek(0)
         audio_bytes = wav_buffer.read()
-        print(f"[TTS API][MelonTTS] WAV 转换完成，大小: {len(audio_bytes)} bytes")
-        return audio_bytes
+        print(f"[TTS API][MelonTTS] WAV 转换完成，大小: {len(audio_bytes)} bytes, sample_rate={sample_rate}")
+        return audio_bytes, "audio/wav"
+    except Exception as e:
+        print(f"[TTS API][MelonTTS] ❌ MP3 转换失败: {e}，退化到 WAV")
+        # 如果 MP3 转换失败，退化到 WAV
+        import soundfile as sf
+        audio = audio.astype(np.float32)
+        wav_buffer = io.BytesIO()
+        sf.write(wav_buffer, audio, sample_rate, format='WAV', subtype='PCM_16')
+        wav_buffer.seek(0)
+        audio_bytes = wav_buffer.read()
+        print(f"[TTS API][MelonTTS] WAV 转换完成（退化），大小: {len(audio_bytes)} bytes")
+        return audio_bytes, "audio/wav"
 
 
-async def _generate_elevenlabs_audio(text: str, accent: str) -> bytes:
+async def _generate_elevenlabs_audio(text: str, accent: str) -> tuple[bytes, str]:
     """
     使用 ElevenLabs 生成音频（API）
     
@@ -112,7 +124,7 @@ async def _generate_elevenlabs_audio(text: str, accent: str) -> bytes:
         accent: 口音类型
     
     Returns:
-        bytes: MP3 音频数据
+        tuple[bytes, str]: (音频数据, MIME类型)
     """
     from app.services.tts_elevenlabs import _stream_elevenlabs, _pick_voice_id_by_accent
     
@@ -136,7 +148,7 @@ async def _generate_elevenlabs_audio(text: str, accent: str) -> bytes:
     # 合并音频数据
     audio_data = b''.join(audio_chunks)
     print(f"[TTS API][ElevenLabs] 生成完成，大小: {len(audio_data)} bytes")
-    return audio_data
+    return audio_data, "audio/mpeg"
 
 
 @router.post("/synthesize")
@@ -162,18 +174,20 @@ async def synthesize_tts(req: TtsRequest):
     try:
         # 根据 model 参数选择 TTS 服务
         if req.model == "paid":
-            audio_data = await _generate_elevenlabs_audio(req.text, req.accent)
+            audio_data, mime_type = await _generate_elevenlabs_audio(req.text, req.accent)
+            filename = "tts.mp3"
         else:  # "free" 或其他值都使用 MelonTTS
-            audio_data = await _generate_melotts_audio(req.text, req.accent)
+            audio_data, mime_type = await _generate_melotts_audio(req.text, req.accent)
+            filename = "tts.mp3" if mime_type == "audio/mpeg" else "tts.wav"
         
-        print(f"[TTS API] 生成完成: model={req.model}, size={len(audio_data)} bytes")
+        print(f"[TTS API] 生成完成: model={req.model}, mime={mime_type}, size={len(audio_data)} bytes")
         
-        # 返回音频流
+        # 返回音频流（根据实际格式返回正确的 MIME 类型）
         return StreamingResponse(
             io.BytesIO(audio_data),
-            media_type="audio/mpeg",
+            media_type=mime_type,
             headers={
-                "Content-Disposition": "inline; filename=tts.mp3",
+                "Content-Disposition": f"inline; filename={filename}",
                 "Cache-Control": "no-cache",
             }
         )
