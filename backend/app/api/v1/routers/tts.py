@@ -67,34 +67,14 @@ async def _generate_melotts_audio(text: str, accent: str) -> tuple[bytes, str]:
     
     audio, sample_rate = await loop.run_in_executor(executor, synthesize)
     
-    # 转换为 MP3 字节
+    # 转换为音频字节
     audio = np.clip(audio, -1.0, 1.0)
     
+    # ✅ 优先使用 WAV 格式（更可靠，浏览器支持更好）
     try:
-        from pydub import AudioSegment
-        
-        # 转换为 16-bit PCM
-        audio_int16 = (audio * 32767.0).astype(np.int16)
-        
-        # 创建 AudioSegment
-        audio_segment = AudioSegment(
-            audio_int16.tobytes(),
-            frame_rate=sample_rate,
-            sample_width=2,
-            channels=1
-        )
-        
-        # 导出为 MP3
-        mp3_buffer = io.BytesIO()
-        audio_segment.export(mp3_buffer, format="mp3", bitrate="128k")
-        mp3_buffer.seek(0)
-        audio_bytes = mp3_buffer.read()
-        print(f"[TTS API][MelonTTS] MP3 转换完成，大小: {len(audio_bytes)} bytes, sample_rate={sample_rate}")
-        return audio_bytes, "audio/mpeg"
-    except ImportError as e:
-        print(f"[TTS API][MelonTTS] ⚠️ pydub 不可用 ({e})，退化到 WAV 格式")
-        # 退化到 WAV
         import soundfile as sf
+        
+        # 直接输出 WAV（16-bit PCM，浏览器原生支持）
         audio = audio.astype(np.float32)
         wav_buffer = io.BytesIO()
         sf.write(wav_buffer, audio, sample_rate, format='WAV', subtype='PCM_16')
@@ -103,16 +83,38 @@ async def _generate_melotts_audio(text: str, accent: str) -> tuple[bytes, str]:
         print(f"[TTS API][MelonTTS] WAV 转换完成，大小: {len(audio_bytes)} bytes, sample_rate={sample_rate}")
         return audio_bytes, "audio/wav"
     except Exception as e:
-        print(f"[TTS API][MelonTTS] ❌ MP3 转换失败: {e}，退化到 WAV")
-        # 如果 MP3 转换失败，退化到 WAV
-        import soundfile as sf
-        audio = audio.astype(np.float32)
-        wav_buffer = io.BytesIO()
-        sf.write(wav_buffer, audio, sample_rate, format='WAV', subtype='PCM_16')
-        wav_buffer.seek(0)
-        audio_bytes = wav_buffer.read()
-        print(f"[TTS API][MelonTTS] WAV 转换完成（退化），大小: {len(audio_bytes)} bytes")
-        return audio_bytes, "audio/wav"
+        print(f"[TTS API][MelonTTS] ⚠️ WAV转换失败: {e}，尝试MP3...")
+        
+        # 如果WAV失败，尝试MP3（降级方案）
+        try:
+            from pydub import AudioSegment
+            
+            # 转换为 16-bit PCM
+            audio_int16 = (audio * 32767.0).astype(np.int16)
+            
+            # 创建 AudioSegment
+            audio_segment = AudioSegment(
+                audio_int16.tobytes(),
+                frame_rate=sample_rate,
+                sample_width=2,
+                channels=1
+            )
+            
+            # 导出为 MP3（更兼容的参数）
+            mp3_buffer = io.BytesIO()
+            audio_segment.export(
+                mp3_buffer, 
+                format="mp3", 
+                bitrate="128k",
+                parameters=["-ar", "22050"]  # 降低采样率以提高兼容性
+            )
+            mp3_buffer.seek(0)
+            audio_bytes = mp3_buffer.read()
+            print(f"[TTS API][MelonTTS] MP3 转换完成，大小: {len(audio_bytes)} bytes, sample_rate={sample_rate}")
+            return audio_bytes, "audio/mpeg"
+        except Exception as e2:
+            print(f"[TTS API][MelonTTS] ❌ MP3转换也失败: {e2}")
+            raise RuntimeError(f"Audio conversion failed: WAV({e}), MP3({e2})")
 
 
 async def _generate_elevenlabs_audio(text: str, accent: str) -> tuple[bytes, str]:

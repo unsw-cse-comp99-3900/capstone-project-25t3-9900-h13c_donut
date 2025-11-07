@@ -577,34 +577,41 @@ export default function Dashboard() {
             return newText;
           });
           
-          // ✅ Final 结果：跳过 TTS，避免重复（interim 已经实时播放）
-          // 只在特殊情况下播放 final（如 interim 没有触发过）
+          // ✅ Final 结果：智能处理剩余文本
           if (streamingTranslation && finalTranscript.trim()) {
             const fullFinalText = finalTranscript.trim();
             const lastSpoken = lastSpokenTextRef.current;
             const now = Date.now();
             const timeSinceLastTts = now - lastTtsTimeRef.current;
             
-            // ⚠️ 策略：如果最近 2 秒内触发过 TTS，完全跳过 final（避免重复）
-            if (timeSinceLastTts < 2000) {
-              console.log(`[Streaming TTS] Final skipped (interim already played ${timeSinceLastTts}ms ago)`);
-              // 只更新记录，不触发 TTS
-              lastSpokenTextRef.current = fullFinalText;
-              return;
+            // 文本归一化比较
+            const normalize = (text) => text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+            const normalizedFinal = normalize(fullFinalText);
+            const normalizedLast = normalize(lastSpoken);
+            
+            // 计算实际未播放的部分
+            let remaining = '';
+            if (normalizedFinal.startsWith(normalizedLast)) {
+              // final 是 lastSpoken 的延续
+              remaining = fullFinalText.slice(lastSpoken.length).trim();
+            } else if (normalizedFinal !== normalizedLast) {
+              // 完全不同，播放全部
+              remaining = fullFinalText;
             }
             
-            // 只有在很久没有 TTS 的情况下，才播放 final（补救机制）
-            if (fullFinalText.length > lastSpoken.length + 10) {
-              // Final 文本明显比已播放的长很多（>10 字符），可能 interim 丢失了
-              const remaining = fullFinalText.slice(lastSpoken.length).trim();
-              if (remaining.length >= 10) {
-                console.log(`[Streaming TTS] Final补救: "${remaining.substring(0, 30)}..." (likely missed interim)`);
-                lastSpokenTextRef.current = fullFinalText;
-                lastTtsTimeRef.current = now;
-                requestStreamingTts(remaining);
+            // ⚠️ 如果有未播放的文本（哪怕只有几个字），都应该播放
+            if (remaining.length >= 3) {  // 降低阈值到3个字符（如 "me", "you" 等）
+              // 检查是否最近刚播放过（1秒内）
+              if (timeSinceLastTts < 1000) {
+                console.log(`[Streaming TTS] Final部分播放: "${remaining}" (补充遗漏，${timeSinceLastTts}ms前触发过)`);
+              } else {
+                console.log(`[Streaming TTS] Final播放: "${remaining.substring(0, 30)}..." (${remaining.length} chars)`);
               }
+              lastSpokenTextRef.current = fullFinalText;
+              lastTtsTimeRef.current = now;
+              requestStreamingTts(remaining);
             } else {
-              console.log(`[Streaming TTS] Final complete, no significant new content`);
+              console.log(`[Streaming TTS] Final完成，无新内容 (last: "${lastSpoken.substring(0, 30)}...", final: "${fullFinalText.substring(0, 30)}...")`);
               lastSpokenTextRef.current = fullFinalText;
             }
           }
