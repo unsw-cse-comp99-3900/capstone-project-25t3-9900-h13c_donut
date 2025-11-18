@@ -34,27 +34,31 @@ class OpenAIWhisperService(ASRService):
         """
         调用 OpenAI Whisper API 进行转录
         
-        支持两种模式：
-        1. word_timestamps=False: 使用 verbose_json 格式，返回 segment 级别时间戳
-        2. word_timestamps=True: 使用 timestamp_granularities，返回词级别时间戳
+        使用 verbose_json 格式，返回 segment 级别时间戳
+        
+        注意：不使用 timestamp_granularities 参数，因为它会导致 segments 被合并，
+        影响与 diarization 的匹配准确度
         """
         if not self.is_available():
             raise RuntimeError(f"{self.name}: API key not configured")
         
         headers = {"Authorization": f"Bearer {self.api_key}"}
         
-        # 构建请求参数
+        # 构建请求参数（✅ 优化准确度）
         data = {
             "model": self.model,
             "response_format": "verbose_json",
+            # ✅ 高精度参数
+            "temperature": 0.0,  # 0 = 最确定性（最准确，无随机性）
+            "prompt": "Hello, hi, hey, good morning, how are you, I'm fine, thank you, and you, see you, bye.",  # ✅ 常见对话短语示例，帮助 Whisper 理解上下文
         }
         
         if language:
             data["language"] = language
         
-        if word_timestamps:
-            # OpenAI API 的新参数（2024+）
-            data["timestamp_granularities"] = ["word", "segment"]
+        # ❌ 不使用 timestamp_granularities，因为它会合并 segments，导致与 diarization 匹配失败
+        # if word_timestamps:
+        #     data["timestamp_granularities"] = ["word", "segment"]
         
         # 发送请求
         async with httpx.AsyncClient(timeout=120) as client:

@@ -52,21 +52,27 @@ function EyeIcon({ open = false }) {
   );
 }
 
+/** Generate default title for new conversations */
+function generateDefaultTitle() {
+  const ts = new Date();
+  return `New Chat ${ts.toLocaleDateString()}/${ts.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })}`;
+}
+
 /** Title helper */
 function titleFrom(text) {
   if (!text) {
-    const ts = new Date();
-    return `New Chat ${ts.toLocaleDateString()}/${ts.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    })}`;
+    return generateDefaultTitle();
   }
   const first = (text.split(/(?<=[.!?])\s+/)[0] || text).slice(0, 60);
   const cleaned = first
     .replace(/\s+/g, " ")
-    .replace(/[^\p{L}\p{N}\s'’,-]/gu, "")
+    .replace(/[^\p{L}\p{N}\s'',-]/gu, "")
     .trim();
-  if (!cleaned) return "New Chat";
+  if (!cleaned) return generateDefaultTitle();
   const titleCased = cleaned.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1));
   return titleCased;
 }
@@ -131,7 +137,7 @@ export default function Dashboard() {
         setActiveId(pick);
         localStorage.setItem(ACTIVE_KEY, pick);
       } else {
-        const c = await createConversation();
+        const c = await createConversation({ title: generateDefaultTitle() });
         setConvos([c]);
         setActiveId(c.id);
         localStorage.setItem(ACTIVE_KEY, c.id);
@@ -150,7 +156,7 @@ export default function Dashboard() {
     if (creatingRef.current) return;
     creatingRef.current = true;
     try {
-      const c = await createConversation();
+      const c = await createConversation({ title: generateDefaultTitle() });
       setConvos((prev) => (prev.some((x) => x.id === c.id) ? prev : [c, ...prev]));
       setActiveId(c.id);
       localStorage.setItem(ACTIVE_KEY, c.id);
@@ -188,9 +194,10 @@ export default function Dashboard() {
   };
   const commitRename = async () => {
     if (!renameId) return;
-    await renameConversation(renameId, renameValue || "Untitled");
+    const newTitle = renameValue || generateDefaultTitle();
+    await renameConversation(renameId, newTitle);
     setConvos((prev) =>
-      prev.map((c) => (c.id === renameId ? { ...c, title: renameValue || "Untitled" } : c))
+      prev.map((c) => (c.id === renameId ? { ...c, title: newTitle } : c))
     );
     setRenameOpen(false);
     setRenameId(null);
@@ -204,7 +211,7 @@ export default function Dashboard() {
         setActiveId(next[0].id);
         localStorage.setItem(ACTIVE_KEY, next[0].id);
       } else {
-        const c = await createConversation();
+        const c = await createConversation({ title: generateDefaultTitle() });
         setConvos([c]);
         setActiveId(c.id);
         localStorage.setItem(ACTIVE_KEY, c.id);
@@ -220,6 +227,7 @@ export default function Dashboard() {
   const transcriptBoxRef = useRef(null);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
+  
   const [previewText, setPreviewText] = useState("");  // ✅ Web Speech API 预览文本
   const streamingTranslation = true;  // ✅ 流式传译默认开启（去掉开关）
   const currentSegIdRef = useRef(null);
@@ -314,13 +322,23 @@ export default function Dashboard() {
   };
 
   const micStart = async () => {
-    // 确保有会话，并拿到本次真正使用的 convId
+    // ✨ 自动创建新对话：
+    // 1. 如果没有对话列表
+    // 2. 没有活跃对话
+    // 3. 当前活跃对话没有 segments（显示占位文本时）
     let convId = activeId;
-    if (!activeConv) {
-      const c = await createConversation();
+    const hasNoSegments = activeConv && (!activeConv.segments || activeConv.segments.length === 0);
+    
+    if (convos.length === 0 || !activeConv || !activeId || hasNoSegments) {
+      console.log(`[Dashboard] Auto-creating new conversation (convos.length=${convos.length}, activeConv=${!!activeConv}, activeId=${activeId}, hasNoSegments=${hasNoSegments})`);
+      const c = await createConversation({ title: generateDefaultTitle() });
       setConvos((prev) => (prev.some((x) => x.id === c.id) ? prev : [c, ...prev]));
       setActiveId(c.id);
+      localStorage.setItem(ACTIVE_KEY, c.id);
       convId = c.id;
+      console.log(`[Dashboard] ✅ Created new conversation: ${c.id}`);
+    } else {
+      console.log(`[Dashboard] Using existing conversation: ${convId}`);
     }
     currentConvIdRef.current = convId; // 记录本段的会话 ID
     await startSegment();
@@ -330,10 +348,22 @@ export default function Dashboard() {
       model: selectedModel, // "free" | "paid"
       accent: selectedAccent,
       mode: USE_LOCAL_SPEECH ? "local" : "ws",
-      onText: (payload) => {
+      onText: async (payload) => {
         if (typeof payload === "string") {
           setInterimText("");
           setLiveTranscript((prev) => (prev ? prev + payload : payload));
+        } else if (payload.type === "transcripts_updated") {
+          // ✨ 收到 GPT 格式化完成通知，自动刷新 Dashboard
+          console.log(`[Dashboard] 📥 Received transcripts_updated, count=${payload.count}`);
+          try {
+            const data = await loadConversation(convId);
+            if (data) {
+              setConvos((prev) => prev.map((c) => (c.id === convId ? data : c)));
+              console.log(`[Dashboard] ✅ Transcripts refreshed automatically`);
+            }
+          } catch (e) {
+            console.error("[Dashboard] Failed to refresh transcripts:", e);
+          }
         } else {
           const { interim, final } = payload;
           if (interim != null) setInterimText(interim);
@@ -380,9 +410,26 @@ export default function Dashboard() {
     // ✅ 停止 Web Speech API
     stopWebSpeechPreview();
     
-    try { await streamRef.current?.stopMic?.(); } catch {}
-    try { await streamRef.current?.stopSegment?.(); } catch {}
-    // 保持 WS 连接，让后端还能把 final 文本和 TTS 音频推回来
+    // ✨ 获取 Web Speech 文本并发送到后端
+    const webspeechText = liveTranscript || "";
+    
+    try { 
+      await streamRef.current?.stopMic?.(); 
+    } catch {}
+    
+    try { 
+      // ✨ 发送 Web Speech 文本到后端（用于 GPT 比较）
+      await streamRef.current?.stopSegment?.(webspeechText);
+    } catch {}
+    
+    // ✨ 使用 Web Speech 的文本完成当前 segment
+    // Whisper 不再推送 final 文本，所以我们手动触发 finishSegment
+    setTimeout(() => {
+      if (webspeechText && !finishOnceRef.current) {
+        console.log(`[Dashboard] Finishing segment with Web Speech text (${webspeechText.length} chars)`);
+        finishSegment(webspeechText);
+      }
+    }, 500);  // 延迟 500ms 确保 Web Speech 的最后结果已经累积
   };
 
   const onMicToggle = () => (recording ? micStop() : micStart());
@@ -497,8 +544,39 @@ export default function Dashboard() {
         let finalTranscript = '';
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
+          const result = event.results[i];
+          const transcript = result[0].transcript;
+          const confidence = result[0].confidence || 1.0;  // Web Speech API 置信度
+          
+          // ✅ 幻觉检测 1：置信度检查（0ms 延迟）
+          if (confidence < 0.5) {
+            console.warn(`[Hallucination Check] Low confidence (${confidence.toFixed(2)}): "${transcript}"`);
+            continue;  // 跳过低置信度结果
+          }
+          
+          // ✅ 幻觉检测 2：空文本和语气词过滤（< 2ms 延迟）
+          const trimmedText = transcript.trim();
+          
+          // 检测空文本
+          if (!trimmedText || trimmedText.length === 0) {
+            continue;
+          }
+          
+          // 检测纯语气词（单独出现时过滤）
+          const fillerWords = /^(uh|um|hmm|ah|er|oh|mm|mhm|uh-huh|huh)$/i;
+          if (fillerWords.test(trimmedText)) {
+            console.warn(`[Hallucination Check] Filler word detected: "${trimmedText}"`);
+            continue;
+          }
+          
+          // 检测纯标点或特殊字符
+          if (/^[^\w\s]+$/.test(trimmedText)) {
+            console.warn(`[Hallucination Check] Only punctuation: "${trimmedText}"`);
+            continue;
+          }
+          
+          // ✅ 通过检查，正常处理
+          if (result.isFinal) {
             finalTranscript += transcript + ' ';
           } else {
             interimTranscript += transcript;

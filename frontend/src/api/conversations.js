@@ -142,3 +142,17 @@ export async function appendSegment(id, seg) {
     audioUrl: d.audioUrl || null,
   };
 }
+
+/**
+ * getComparisons(id)
+ * Returns: { comparisons: [...], count: number }
+ */
+export async function getComparisons(id) {
+  const result = await apiRequest(`/conversations/${id}/comparisons`);
+
+  if (!result.ok) {
+    throw new Error(result.message || 'Failed to get comparisons');
+  }
+
+  return result.data;
+}

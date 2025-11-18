@@ -20,11 +20,31 @@ def webm_to_wav_16k_mono(webm_path: str) -> str:
             (
                 ffmpeg
                 .input(webm_path)
-                .output(wav_file.name, ac=1, ar="16000", format="wav")
+                # ❌ 移除音频滤波（可能引入失真，影响 Whisper 识别）
+                .output(
+                    wav_file.name, 
+                    ac=1,           # 单声道
+                    ar="16000",     # 16kHz 采样率（Whisper 推荐）
+                    format="wav",
+                    acodec="pcm_s16le",  # 16位 PCM（无损）
+                    loglevel="error"     # 只显示错误
+                )
                 .overwrite_output()
-                .run(capture_stdout=True, capture_stderr=True)  # ✅ 捕获输出以便调试
+                .run(capture_stdout=True, capture_stderr=True)
             )
-            print(f"[ffmpeg] Conversion successful: {wav_file.name}")
+            
+            # ✅ 验证转换后的 WAV 文件
+            wav_size = os.path.getsize(wav_file.name)
+            if wav_size == 0:
+                raise ValueError(f"Converted WAV file is empty: {wav_file.name}")
+            
+            # 检查 WAV 文件头（应该是 "RIFF"）
+            with open(wav_file.name, "rb") as f:
+                wav_header = f.read(4)
+                if wav_header != b'RIFF':
+                    raise ValueError(f"Invalid WAV file header: {wav_header.hex()}")
+            
+            print(f"[ffmpeg] Conversion successful: {wav_file.name} ({wav_size} bytes)")
             return wav_file.name
         except ffmpeg.Error as e:
             # 打印详细错误信息

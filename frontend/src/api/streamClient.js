@@ -216,6 +216,9 @@ export function createStreamClient({
             onText?.({ interim: msg.text, ts: msg.ts, confidence: msg.confidence });
           } else if (msg.type === "final") {
             onText?.({ final: msg.text, ts: msg.ts, confidence: msg.confidence });
+          } else if (msg.type === "transcripts_updated") {
+            // ✨ 收到后端 GPT 格式化完成的通知
+            onText?.({ type: "transcripts_updated", count: msg.count });
           } else {
             console.warn("[client] textWS unknown msg:", msg);
           }
@@ -313,10 +316,13 @@ export function createStreamClient({
     // noop
   }
 
-  async function stopSegment() {
+  async function stopSegment(webspeechText = "") {
     if (uploadWS?.readyState === WebSocket.OPEN) {
-      console.log("[client] send stop");
-      sendJSON(uploadWS, { type: "stop" });
+      console.log("[client] send stop with Web Speech text");
+      sendJSON(uploadWS, { 
+        type: "stop",
+        webspeech_text: webspeechText || ""
+      });
     }
   }
 

@@ -141,8 +141,8 @@ async def _generate_elevenlabs_audio(text: str, accent: str) -> tuple[bytes, str
         text=text,
         voice_id=voice_id,
         stability=0.88,           # 稳定性（更稳定，减少变化）
-        similarity_boost=0.73,    # 相似度增强
-        style=0.73,               # 风格夸张度（适中表现力）
+        similarity_boost=0.9,    # 相似度增强
+        style=0.40,               # 风格夸张度（适中表现力）
         use_speaker_boost=True    # 启用说话者增强
     ):
         audio_chunks.append(chunk)

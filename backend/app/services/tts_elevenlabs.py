@@ -53,7 +53,7 @@ async def _stream_elevenlabs(
     if not settings.eleven_api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is missing")
 
-    url = f"{settings.eleven_api_base}/text-to-speech/{voice_id}/stream?optimize_streaming_latency=2"
+    url = f"{settings.eleven_api_base}/text-to-speech/{voice_id}/stream?optimize_streaming_latency=4"
     headers = {
         "xi-api-key": settings.eleven_api_key,
         "accept": "audio/mpeg",
@@ -61,7 +61,8 @@ async def _stream_elevenlabs(
     }
     payload = {
         "text": text,
-        "model_id": "eleven_multilingual_v2",  # 使用更先进的多语言模型
+        "model_id": "eleven_turbo_v2_5",  # ⚡ Turbo 模型：更低延迟
+        "output_format": "mp3_44100_64",  # 🔧 64kbps：平衡音质和速度
         "voice_settings": {
             "stability": stability,
             "similarity_boost": similarity_boost,

@@ -32,6 +32,15 @@ class Settings(BaseModel):
     use_local_whisper: bool = os.getenv("USE_LOCAL_WHISPER", "false").lower() in ("true", "1", "yes")
     local_whisper_model: str = os.getenv("LOCAL_WHISPER_MODEL", "small")  # tiny, base, small, medium, large
     
+    # Diarization Settings
+    # ⚠️ 说话人识别准确度不理想，默认关闭（代码保留，可随时启用）
+    enable_diarization: bool = os.getenv("ENABLE_DIARIZATION", "false").lower() in ("true", "1", "yes")
+    
+    # GPT Post-Processing Settings
+    # ✅ 使用 GPT 整理和分句（推荐）
+    enable_gpt_formatting: bool = os.getenv("ENABLE_GPT_FORMATTING", "true").lower() in ("true", "1", "yes")
+    gpt_model: str = os.getenv("GPT_MODEL", "gpt-4o-mini")  # gpt-3.5-turbo, gpt-4, gpt-4o-mini
+    
     # ElevenLabs API Settings (for TTS)
     eleven_api_key: str | None = os.getenv("ELEVENLABS_API_KEY")
     eleven_api_base: str = os.getenv("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1")

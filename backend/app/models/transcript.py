@@ -15,7 +15,7 @@ class Transcript(models.Model):
 
     text = fields.TextField()
     audio_url = fields.CharField(max_length=1024, null=True)
-    
+
     # ✅ 新增：说话人 ID（"SPEAKER_00", "SPEAKER_01", "SPEAKER_02"）
     speaker_id = fields.CharField(max_length=32, null=True)
     
