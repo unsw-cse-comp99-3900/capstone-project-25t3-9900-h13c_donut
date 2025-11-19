@@ -17,6 +17,16 @@ def get_bert_feature(text, word2ph, device=None):
     if not device:
         device = "cuda"
     if model is None:
+        if device == "cuda":
+            if torch.cuda.is_available():
+                print(f"[BERT] 🚀 GPU加速已启用: {model_id} -> {torch.cuda.get_device_name(0)}")
+            else:
+                device = "cpu"
+                print(f"[BERT] ⚠️  CUDA不可用，回退到CPU模式: {model_id}")
+        elif device == "mps":
+            print(f"[BERT] 🚀 GPU加速已启用: {model_id} -> MPS (Apple Silicon)")
+        else:
+            print(f"[BERT] ⚠️  使用CPU模式: {model_id}")
         model = AutoModelForMaskedLM.from_pretrained(model_id).to(
             device
         )
