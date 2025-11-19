@@ -808,6 +808,8 @@ export default function Dashboard() {
     }
   };
 
+
+
   const confirmLogout = () => {
     if (recording) micStop();
     localStorage.removeItem("authToken");
@@ -1041,7 +1043,13 @@ export default function Dashboard() {
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>Change Password</div>
             <div className={styles.modalBody}>
-              <label className={styles.modalLabel}>New Password</label>
+              <label className={styles.modalLabel}>
+                New Password
+                <span className={styles.hint}>
+                  {" "}
+                  (At least 8 chars, include at least two types: uppercase / lowercase / number / special)
+                </span>
+              </label>
               <div className={styles.field}>
                 <input
                   className={`${styles.input} ${styles.inputWithEye}`}
@@ -1068,6 +1076,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      
     </div>
   );
 }

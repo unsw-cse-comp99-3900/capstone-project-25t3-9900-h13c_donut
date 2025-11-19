@@ -1,18 +1,44 @@
+// src/pages/LoginPage/LoginPage.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./LoginPage.module.css";
 import { login } from "../../api/auth";
+import MessageBox from "../../components/MessageBox";
 
 function EyeIcon({ open = false }) {
   return open ? (
     <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" fill="none" stroke="currentColor" strokeWidth="1.8"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.8"/>
+      <path
+        d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
     </svg>
   ) : (
     <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 3l18 18" fill="none" stroke="currentColor" strokeWidth="1.8"/>
-      <path d="M10.58 10.58a3 3 0 104.24 4.24M9.88 5.09A10.7 10.7 0 0112 5c7 0 11 7 11 7a17.2 17.2 0 01-3.11 3.88M6.11 7.11A17.2 17.2 0 001 12s4 7 11 7a10.7 10.7 0 003.04-.43" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <path
+        d="M3 3l18 18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M10.58 10.58a3 3 0 104.24 4.24M9.88 5.09A10.7 10.7 0 0112 5c7 0 11 7 11 7a17.2 17.2 0 01-3.11 3.88M6.11 7.11A17.2 17.2 0 001 12s4 7 11 7a10.7 10.7 0 003.04-.43"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -23,21 +49,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(""); // 新增：错误消息
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!username || !password) {
-      alert("Please fill in both fields.");
+    setError("");
+
+    const u = username.trim();
+    const p = password;
+
+    if (!u || !p) {
+      setError("Please fill in both username and password.");
       return;
     }
+
     setLoading(true);
     try {
-      const resp = await login({ username, password });
+      const resp = await login({ username: u, password: p });
       if (resp.ok) {
         // store session
         localStorage.setItem("authToken", resp.token || "mock-token");
-        localStorage.setItem("authUserId", resp.user?.id || resp.userId || username);
-        localStorage.setItem("authUsername", resp.user?.username || username);
+        localStorage.setItem("authUserId", resp.user?.id || u);
+        localStorage.setItem("authUsername", resp.user?.username || u);
         localStorage.setItem("authUserRole", resp.user?.role || "user");
 
         // 根据角色跳转：管理员 → /admin，普通用户 → /dashboard
@@ -47,10 +80,21 @@ export default function LoginPage() {
           navigate("/dashboard");
         }
       } else {
-        alert(resp.message || "Login failed.");
+        // 统一处理 message，避免 [Object Object]
+        const msg =
+          typeof resp.message === "string"
+            ? resp.message
+            : resp.message?.message ||
+              resp.message?.detail ||
+              "Login failed. Please check your username and password.";
+        setError(msg);
       }
     } catch (err) {
-      alert(err.message || "Unexpected error.");
+      const msg =
+        typeof err?.message === "string"
+          ? err.message
+          : "Unexpected error. Please try again.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -63,6 +107,13 @@ export default function LoginPage() {
       </h1>
 
       <div className={styles.card}>
+        {/* 统一错误提示区域 */}
+        <MessageBox
+          type="error"
+          message={error}
+          onClose={() => setError("")}
+        />
+
         <form className={styles.form} onSubmit={handleSubmit}>
           <label htmlFor="username">Username</label>
           <input
@@ -98,10 +149,7 @@ export default function LoginPage() {
           </button>
 
           <div className={styles.footer}>
-            <span
-              className={styles.link}
-              onClick={() => navigate("/register")}
-            >
+            <span className={styles.link} onClick={() => navigate("/register")}>
               Register
             </span>
             <span

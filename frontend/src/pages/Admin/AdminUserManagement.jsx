@@ -1,15 +1,22 @@
 // frontend/src/pages/Admin/AdminUserManagement.jsx
 // User Management Page
 
-import React, { useState, useEffect } from 'react';
-import { listUsers, updateUser, deleteUser, resetUserPassword } from '../../api/admin.js';
-import styles from './AdminUserManagement.module.css';
+import React, { useState, useEffect } from "react";
+import { listUsers, updateUser, deleteUser, resetUserPassword } from "../../api/admin.js";
+import MessageBox from "../../components/MessageBox";
+import styles from "./AdminUserManagement.module.css";
+import { validatePasswordComplexity, validateEmailFormat } from "../../utils/validators";
+
+
 
 export default function AdminUserManagement() {
   const [users, setUsers] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+
+  // 全局提示
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -19,8 +26,8 @@ export default function AdminUserManagement() {
   // Edit modal state
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({
-    username: '',
-    email: '',
+    username: "",
+    email: "",
   });
 
   // Delete confirmation modal
@@ -28,12 +35,13 @@ export default function AdminUserManagement() {
 
   // Reset password modal
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
-  const [newPassword, setNewPassword] = useState('');
+  const [newPassword, setNewPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
 
   // Load user list
-  const loadUsers = async (page = 1, query = '') => {
+  const loadUsers = async (page = 1, query = "") => {
     setLoading(true);
-    setError('');
+    setError("");
 
     const offset = (page - 1) * pageSize;
     const result = await listUsers({ q: query, offset, limit: pageSize });
@@ -43,7 +51,7 @@ export default function AdminUserManagement() {
       setTotalUsers(result.data.total);
       setCurrentPage(page);
     } else {
-      setError(result.message || 'Failed to load user list');
+      setError(result.message || "Failed to load user list.");
     }
 
     setLoading(false);
@@ -51,7 +59,7 @@ export default function AdminUserManagement() {
 
   // Initial load - Load all users on component mount
   useEffect(() => {
-    loadUsers(1, '');
+    loadUsers(1, "");
   }, []);
 
   // Search handler
@@ -66,40 +74,56 @@ export default function AdminUserManagement() {
     setEditingUser(user);
     setEditForm({
       username: user.username,
-      email: user.email || '',
+      email: user.email || "",
     });
+    setError("");
+    setSuccess("");
   };
 
   // Close edit modal
   const closeEditModal = () => {
     setEditingUser(null);
-    setEditForm({ username: '', email: '' });
+    setEditForm({ username: "", email: "" });
   };
 
   // Submit edit
   const handleEditSubmit = async () => {
-    if (!editForm.username.trim()) {
-      alert('Username cannot be empty');
+    setError("");
+    setSuccess("");
+
+    const username = editForm.username.trim();
+    const email = editForm.email.trim();
+
+    if (!username) {
+      setError("Username cannot be empty.");
+      return;
+    }
+
+    const emailErr = validateEmailFormat(email);
+    if (emailErr) {
+      setError(emailErr);
       return;
     }
 
     const result = await updateUser(editingUser.id, {
-      username: editForm.username,
-      email: editForm.email || null,
+      username,
+      email: email || null, // 空字符串转 null，和后端约定一致
     });
 
     if (result.ok) {
-      alert('User information updated successfully');
+      setSuccess("User information updated successfully.");
       closeEditModal();
       loadUsers(currentPage, searchQuery);
     } else {
-      alert(`Update failed: ${result.message}`);
+      setError(result.message || "Update failed.");
     }
   };
 
   // Open delete confirmation
   const openDeleteConfirm = (user) => {
     setDeletingUser(user);
+    setError("");
+    setSuccess("");
   };
 
   // Close delete confirmation
@@ -109,48 +133,62 @@ export default function AdminUserManagement() {
 
   // Confirm delete
   const handleDeleteConfirm = async () => {
+    setError("");
+    setSuccess("");
+
     const result = await deleteUser(deletingUser.id);
 
     if (result.ok) {
-      alert('User deleted successfully');
+      setSuccess("User deleted successfully.");
       closeDeleteConfirm();
       loadUsers(currentPage, searchQuery);
     } else {
-      alert(`Delete failed: ${result.message}`);
+      setError(result.message || "Delete failed.");
     }
   };
 
   // Open reset password modal
   const openResetPasswordModal = (user) => {
     setResetPasswordUser(user);
-    setNewPassword('');
+    setNewPassword("");
+    setError("");
+    setSuccess("");
   };
 
   // Close reset password modal
   const closeResetPasswordModal = () => {
     setResetPasswordUser(null);
-    setNewPassword('');
+    setNewPassword("");
+    setResetLoading(false);
   };
 
   // Submit reset password
   const handleResetPasswordSubmit = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+    if (!resetPasswordUser) return;
+
+    setError("");
+    setSuccess("");
+
+    const pwdErr = validatePasswordComplexity(newPassword);
+    if (pwdErr) {
+      setError(pwdErr);
       return;
     }
 
+    setResetLoading(true);
     const result = await resetUserPassword(resetPasswordUser.id, newPassword);
 
     if (result.ok) {
-      alert('Password reset successfully');
+      setSuccess("Password reset successfully.");
       closeResetPasswordModal();
     } else {
-      alert(`Reset failed: ${result.message}`);
+      setError(result.message || "Reset failed.");
     }
+    setResetLoading(false);
   };
 
   // Pagination handling
-  const totalPages = Math.ceil(totalUsers / pageSize);
+  const totalPages = Math.ceil(totalUsers / pageSize) || 1;
   const canPrevPage = currentPage > 1;
   const canNextPage = currentPage < totalPages;
 
@@ -169,7 +207,17 @@ export default function AdminUserManagement() {
         </div>
       </div>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {/* 全局消息提示 */}
+      <MessageBox
+        type="error"
+        message={error}
+        onClose={() => setError("")}
+      />
+      <MessageBox
+        type="success"
+        message={success}
+        onClose={() => setSuccess("")}
+      />
 
       {loading ? (
         <div className={styles.loading}>Loading...</div>
@@ -192,13 +240,21 @@ export default function AdminUserManagement() {
                   <tr key={user.id}>
                     <td className={styles.idCell}>{user.id.slice(0, 8)}...</td>
                     <td>{user.username}</td>
-                    <td>{user.email || '-'}</td>
+                    <td>{user.email || "-"}</td>
                     <td>
-                      <span className={user.role === 'admin' ? styles.badgeAdmin : styles.badgeUser}>
-                        {user.role === 'admin' ? 'Admin' : 'User'}
+                      <span
+                        className={
+                          user.role === "admin"
+                            ? styles.badgeAdmin
+                            : styles.badgeUser
+                        }
+                      >
+                        {user.role === "admin" ? "Admin" : "User"}
                       </span>
                     </td>
-                    <td>{new Date(user.created_at).toLocaleString('en-US')}</td>
+                    <td>
+                      {new Date(user.created_at).toLocaleString("en-US")}
+                    </td>
                     <td className={styles.actions}>
                       <button
                         className={styles.btnEdit}
@@ -221,6 +277,13 @@ export default function AdminUserManagement() {
                     </td>
                   </tr>
                 ))}
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className={styles.empty}>
+                      No users found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -257,7 +320,9 @@ export default function AdminUserManagement() {
               <input
                 type="text"
                 value={editForm.username}
-                onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, username: e.target.value })
+                }
                 className={styles.input}
               />
             </div>
@@ -266,7 +331,9 @@ export default function AdminUserManagement() {
               <input
                 type="email"
                 value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, email: e.target.value })
+                }
                 className={styles.input}
               />
             </div>
@@ -287,10 +354,16 @@ export default function AdminUserManagement() {
         <div className={styles.modal}>
           <div className={styles.modalContent}>
             <h3>Confirm Delete</h3>
-            <p>Are you sure you want to delete user <strong>{deletingUser.username}</strong>?</p>
-            <p className={styles.warning}>This action cannot be undone!</p>
+            <p>
+              Are you sure you want to delete user{" "}
+              <strong>{deletingUser.username}</strong>?
+            </p >
+            <p className={styles.warning}>This action cannot be undone!</p >
             <div className={styles.modalActions}>
-              <button className={styles.btnDelete} onClick={handleDeleteConfirm}>
+              <button
+                className={styles.btnDelete}
+                onClick={handleDeleteConfirm}
+              >
                 Confirm Delete
               </button>
               <button className={styles.btnCancel} onClick={closeDeleteConfirm}>
@@ -306,9 +379,14 @@ export default function AdminUserManagement() {
         <div className={styles.modal}>
           <div className={styles.modalContent}>
             <h3>Reset Password</h3>
-            <p>Set new password for user <strong>{resetPasswordUser.username}</strong></p>
+            <p>
+              Set new password for user{" "}
+              <strong>{resetPasswordUser.username}</strong>
+            </p >
             <div className={styles.formGroup}>
-              <label>New Password (at least 6 characters)</label>
+              <label>
+                New Password (at least 8 chars & two of: upper/lower/number/special)
+              </label>
               <input
                 type="password"
                 value={newPassword}
@@ -318,10 +396,17 @@ export default function AdminUserManagement() {
               />
             </div>
             <div className={styles.modalActions}>
-              <button className={styles.btnSubmit} onClick={handleResetPasswordSubmit}>
-                Confirm Reset
+              <button
+                className={styles.btnSubmit}
+                onClick={handleResetPasswordSubmit}
+                disabled={resetLoading}
+              >
+                {resetLoading ? "Saving..." : "Confirm Reset"}
               </button>
-              <button className={styles.btnCancel} onClick={closeResetPasswordModal}>
+              <button
+                className={styles.btnCancel}
+                onClick={closeResetPasswordModal}
+              >
                 Cancel
               </button>
             </div>
