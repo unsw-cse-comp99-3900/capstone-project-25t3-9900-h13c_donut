@@ -289,14 +289,28 @@ export default function Dashboard() {
       setLiveTranscript(finalText);
     }
 
+    // ✨ 先更新本地状态，确保 segment 被正确添加到 activeConv
     setConvos((prev) => {
       return prev.map((c) => {
         if (c.id !== convId) return c;
-        const segs = (c.segments || []).map((s) =>
-          s.id === segId
-            ? { ...s, end: Date.now(), transcript: textToSave, audioUrl: segAudioUrlRef.current }
-            : s
-        );
+        // 检查 segment 是否已存在
+        const existingSeg = (c.segments || []).find((s) => s.id === segId);
+        const segs = existingSeg
+          ? (c.segments || []).map((s) =>
+              s.id === segId
+                ? { ...s, end: Date.now(), transcript: textToSave, audioUrl: segAudioUrlRef.current }
+                : s
+            )
+          : [
+              ...(c.segments || []),
+              {
+                id: segId,
+                start: Date.now() - 1,
+                end: Date.now(),
+                transcript: textToSave,
+                audioUrl: segAudioUrlRef.current,
+              },
+            ];
         const next = { ...c, segments: segs };
         if ((c.segments?.length || 0) >= 1 && c.title?.startsWith("New Chat") && textToSave) {
           next.title = titleFrom(textToSave) || c.title;
@@ -315,8 +329,11 @@ export default function Dashboard() {
       });
     } catch {}
 
-    setLiveTranscript("");
-    setInterimText("");
+    // ✨ 延迟清空 liveTranscript，确保 UI 已经更新显示 segment
+    setTimeout(() => {
+      setLiveTranscript("");
+      setInterimText("");
+    }, 100);
     currentSegIdRef.current = null;
     // 不清 currentConvIdRef，兜底还能读到
   };
@@ -332,6 +349,7 @@ export default function Dashboard() {
     if (convos.length === 0 || !activeConv || !activeId || hasNoSegments) {
       console.log(`[Dashboard] Auto-creating new conversation (convos.length=${convos.length}, activeConv=${!!activeConv}, activeId=${activeId}, hasNoSegments=${hasNoSegments})`);
       const c = await createConversation({ title: generateDefaultTitle() });
+      // ✨ 同时更新 convos 和 activeId，确保 activeConv 能立即计算出来
       setConvos((prev) => (prev.some((x) => x.id === c.id) ? prev : [c, ...prev]));
       setActiveId(c.id);
       localStorage.setItem(ACTIVE_KEY, c.id);
@@ -424,10 +442,11 @@ export default function Dashboard() {
     
     // ✨ 使用 Web Speech 的文本完成当前 segment
     // Whisper 不再推送 final 文本，所以我们手动触发 finishSegment
+    // 即使 webspeechText 为空，也要完成 segment（可能用户没有说话）
     setTimeout(() => {
-      if (webspeechText && !finishOnceRef.current) {
+      if (!finishOnceRef.current) {
         console.log(`[Dashboard] Finishing segment with Web Speech text (${webspeechText.length} chars)`);
-        finishSegment(webspeechText);
+        finishSegment(webspeechText || "");
       }
     }, 500);  // 延迟 500ms 确保 Web Speech 的最后结果已经累积
   };
