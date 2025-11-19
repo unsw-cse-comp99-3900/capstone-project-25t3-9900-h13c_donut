@@ -11,14 +11,6 @@ tokenizers = {}
 models = {}
 
 def get_bert_feature(text, word2ph, device=None, model_id='hfl/chinese-roberta-wwm-ext-large'):
-    if model_id not in models:
-        models[model_id] = AutoModelForMaskedLM.from_pretrained(
-            model_id
-        ).to(device)
-        tokenizers[model_id] = AutoTokenizer.from_pretrained(model_id)
-    model = models[model_id]
-    tokenizer = tokenizers[model_id]
-
     if (
         sys.platform == "darwin"
         and torch.backends.mps.is_available()
@@ -27,6 +19,24 @@ def get_bert_feature(text, word2ph, device=None, model_id='hfl/chinese-roberta-w
         device = "mps"
     if not device:
         device = "cuda"
+    
+    if model_id not in models:
+        if device == "cuda":
+            if torch.cuda.is_available():
+                print(f"[BERT] 🚀 GPU加速已启用: {model_id} -> {torch.cuda.get_device_name(0)}")
+            else:
+                device = "cpu"
+                print(f"[BERT] ⚠️  CUDA不可用，回退到CPU模式: {model_id}")
+        elif device == "mps":
+            print(f"[BERT] 🚀 GPU加速已启用: {model_id} -> MPS (Apple Silicon)")
+        else:
+            print(f"[BERT] ⚠️  使用CPU模式: {model_id}")
+        models[model_id] = AutoModelForMaskedLM.from_pretrained(
+            model_id
+        ).to(device)
+        tokenizers[model_id] = AutoTokenizer.from_pretrained(model_id)
+    model = models[model_id]
+    tokenizer = tokenizers[model_id]
 
     with torch.no_grad():
         inputs = tokenizer(text, return_tensors="pt")
