@@ -51,7 +51,7 @@ async def login(payload: LoginRequest, response: Response):
     user = await User.get_or_none(username=payload.username)
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail={"code":"AUTH_INVALID_CREDENTIALS","message":"账号或密码错误"})
+                            detail={"code":"AUTH_INVALID_CREDENTIALS","message":"Incorrect username or password"})
     token = create_access_token(str(user.id), user.role)
     response.set_cookie("accessToken", token, httponly=True, secure=False, samesite="lax")
     return {"success": True, "data": {"user": {"id": str(user.id), "username": user.username, "email": user.email, "role": user.role},

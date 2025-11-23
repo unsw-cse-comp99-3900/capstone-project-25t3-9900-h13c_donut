@@ -2,8 +2,10 @@
 import React from "react";
 import styles from "./MessageBox.module.css";
 
-export default function MessageBox({ type = "error", message, onClose }) {
-  if (!message) return null;
+
+export default function MessageBox({ type = "error", message, children, onClose }) {
+  const content = message || children;
+  if (!content) return null;
 
   const className =
     type === "success" ? styles.boxSuccess :
@@ -12,7 +14,7 @@ export default function MessageBox({ type = "error", message, onClose }) {
 
   return (
     <div className={className}>
-      <span>{message}</span>
+      <span>{content}</span>
       {onClose && (
         <button
           type="button"

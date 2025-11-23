@@ -12,6 +12,12 @@ export async function login({ username, password }) {
   return { ok: true, token: accessToken, user: { id: user.id, username: user.username, email: user.email ?? "", role: user.role } };
 }
 
+export async function logout() {
+  // 调用后端 /auth/logout，删除 Cookie
+  const r = await apiRequest("/auth/logout", { method: "POST" });
+  return r;  // 这里即便失败也无所谓，前端照样清状态
+}
+
 /**
  * Register (backend)
  * - unique username

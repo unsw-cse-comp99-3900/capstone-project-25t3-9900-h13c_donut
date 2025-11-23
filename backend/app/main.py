@@ -1,4 +1,5 @@
 # app/main.py
+import torch
 import os
 import shutil
 import logging
@@ -101,6 +102,12 @@ app.add_middleware(
 async def on_startup():
     # 先确保 ffmpeg 在 PATH（为 ASR 转码做准备）
     _ensure_ffmpeg_on_path()
+    # 检查 CUDA 是否可用
+    if torch.cuda.is_available():
+        device_name = torch.cuda.get_device_name(0)
+        logger.info(f"[CUDA] GPU acceleration is enabled: {device_name}")
+    else:
+        logger.warning("[CUDA] Currently using CPU mode (GPU not detected)）")
     # 你的 DB 初始化
     await init_db()
     #首次有一个管理员账号

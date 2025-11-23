@@ -6,20 +6,25 @@ import { useNavigate } from 'react-router-dom';
 import AdminUserManagement from './AdminUserManagement.jsx';
 import AdminKeyManagement from './AdminKeyManagement.jsx';
 import styles from './AdminDashboard.module.css';
+import { logout } from "../../api/auth";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('users'); // 'users' or 'keys'
 
+  
+  
   // Logout handler
-  const handleLogout = () => {
+  const handleLogout = async () => {
+
+    await logout(); 
     // Clear local storage
     localStorage.removeItem('authUserId');
     localStorage.removeItem('authUsername');
     localStorage.removeItem('authUserRole');
 
     // Navigate to login page
-    navigate('/login');
+    navigate('/login',{ replace: true });
   };
 
   return (

@@ -37,6 +37,8 @@ export default function AdminUserManagement() {
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [editMsg, setEditMsg] = useState({ type: "", text: "" });
+  const [resetMsg, setResetMsg] = useState({ type: "", text: "" });
 
   // Load user list
   const loadUsers = async (page = 1, query = "") => {
@@ -88,36 +90,59 @@ export default function AdminUserManagement() {
 
   // Submit edit
   const handleEditSubmit = async () => {
-    setError("");
-    setSuccess("");
+  // 清除上一条提示
+  setEditMsg({ type: "", text: "" });
 
-    const username = editForm.username.trim();
-    const email = editForm.email.trim();
+  const username = editForm.username.trim();
+  const email = (editForm.email || "").trim();
 
-    if (!username) {
-      setError("Username cannot be empty.");
-      return;
-    }
+  // 用户名必填
+  if (!username) {
+    setEditMsg({
+      type: "error",
+      text: "Username cannot be empty.",
+    });
+    return;
+  }
 
+  // 邮箱格式校验（允许为空）
+  if (email) {
     const emailErr = validateEmailFormat(email);
     if (emailErr) {
-      setError(emailErr);
+      setEditMsg({
+        type: "error",
+        text: emailErr,
+      });
       return;
     }
+  }
 
-    const result = await updateUser(editingUser.id, {
-      username,
-      email: email || null, // 空字符串转 null，和后端约定一致
+  const result = await updateUser(editingUser.id, {
+    username,
+    email: email || null,
+  });
+
+  if (result.ok) {
+    setEditMsg({
+      type: "success",
+      text: "User information updated successfully.",
     });
 
-    if (result.ok) {
-      setSuccess("User information updated successfully.");
+    // 延迟一点关闭，让用户看到提示
+    setTimeout(() => {
       closeEditModal();
       loadUsers(currentPage, searchQuery);
-    } else {
-      setError(result.message || "Update failed.");
-    }
-  };
+    }, 500);
+  } else {
+    setEditMsg({
+      type: "error",
+      text: result.message || "Update failed.",
+    });
+  }
+};
+
+
+
 
   // Open delete confirmation
   const openDeleteConfirm = (user) => {
@@ -164,28 +189,32 @@ export default function AdminUserManagement() {
 
   // Submit reset password
   const handleResetPasswordSubmit = async () => {
-    if (!resetPasswordUser) return;
+  setResetMsg({ type: "", text: "" });
 
-    setError("");
-    setSuccess("");
+  const pwd = newPassword;
+  const err = validatePasswordComplexity(pwd);
+  if (err) {
+    setResetMsg({
+      type: "error",
+      text: err,
+    });
+    return;
+  }
 
-    const pwdErr = validatePasswordComplexity(newPassword);
-    if (pwdErr) {
-      setError(pwdErr);
-      return;
-    }
+  const result = await resetUserPassword(resetPasswordUser.id, pwd);
 
-    setResetLoading(true);
-    const result = await resetUserPassword(resetPasswordUser.id, newPassword);
+  if (result.ok) {
+    
+    closeResetPasswordModal();
+  } else {
+    setResetMsg({
+      type: "error",
+      text: result.message || "Reset failed.",
+    });
+  }
+};
 
-    if (result.ok) {
-      setSuccess("Password reset successfully.");
-      closeResetPasswordModal();
-    } else {
-      setError(result.message || "Reset failed.");
-    }
-    setResetLoading(false);
-  };
+  
 
   // Pagination handling
   const totalPages = Math.ceil(totalUsers / pageSize) || 1;
@@ -315,6 +344,14 @@ export default function AdminUserManagement() {
         <div className={styles.modal}>
           <div className={styles.modalContent}>
             <h3>Edit User</h3>
+
+            {/* ➜ 在弹窗内部显示格式错误 / 成功提示 */}
+            <MessageBox
+              type={editMsg.type || "error"}
+              message={editMsg.text}
+              onClose={() => setEditMsg({ type: "", text: "" })}
+            />
+
             <div className={styles.formGroup}>
               <label>Username</label>
               <input
@@ -341,13 +378,20 @@ export default function AdminUserManagement() {
               <button className={styles.btnSubmit} onClick={handleEditSubmit}>
                 Submit
               </button>
-              <button className={styles.btnCancel} onClick={closeEditModal}>
+              <button
+                className={styles.btnCancel}
+                onClick={() => {
+                  setEditMsg({ type: "", text: "" });
+                  closeEditModal();
+                }}
+              >
                 Cancel
               </button>
             </div>
           </div>
         </div>
       )}
+      
 
       {/* Delete Confirmation Modal */}
       {deletingUser && (
@@ -375,14 +419,23 @@ export default function AdminUserManagement() {
       )}
 
       {/* Reset Password Modal */}
+      {/* Reset Password Modal */}
       {resetPasswordUser && (
         <div className={styles.modal}>
           <div className={styles.modalContent}>
             <h3>Reset Password</h3>
+
+            {/* ➜ 在弹窗内部展示复杂度/错误提示 */}
+            <MessageBox
+              type={resetMsg.type || "error"}
+              message={resetMsg.text}
+              onClose={() => setResetMsg({ type: "", text: "" })}
+            />
+
             <p>
               Set new password for user{" "}
               <strong>{resetPasswordUser.username}</strong>
-            </p >
+            </p>
             <div className={styles.formGroup}>
               <label>
                 New Password (at least 8 chars & two of: upper/lower/number/special)
@@ -405,7 +458,10 @@ export default function AdminUserManagement() {
               </button>
               <button
                 className={styles.btnCancel}
-                onClick={closeResetPasswordModal}
+                onClick={() => {
+                  setResetMsg({ type: "", text: "" });
+                  closeResetPasswordModal();
+                }}
               >
                 Cancel
               </button>
@@ -413,6 +469,9 @@ export default function AdminUserManagement() {
           </div>
         </div>
       )}
+
+
+      
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./Dashboard.module.css";
+import MessageBox from "../../components/MessageBox";
+import { validatePasswordComplexity, validateEmailFormat } from "../../utils/validators";
 
 import { verifyUpgradeKey } from "../../api/dashboard";
 import {
@@ -778,35 +780,104 @@ export default function Dashboard() {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [newPwd, setNewPwd] = useState("");
   const [showNewPwd, setShowNewPwd] = useState(false);
+  const [pwdMsg, setPwdMsg] = useState({ type: "", text: "" });
+  const [upgradeMsg, setUpgradeMsg] = useState({ type: "", text: "" });
+
 
   const confirmUpgrade = async () => {
-    const key = upgradeKeyRef.current?.value?.trim();
-    if (!key) return;
+  const key = upgradeKeyRef.current?.value?.trim();
+
+  if (!key) {
+    setUpgradeMsg({
+      type: "error",
+      text: "Please enter the upgrade key.",
+    });
+    return;
+  }
+
+  try {
     const r = await verifyUpgradeKey(key);
     if (r?.ok) {
       setModelUnlocked(true);
       localStorage.setItem(PAID_UNLOCK_KEY, "1");
-      setUpgradeOpen(false);
-      alert("Upgrade successful! Paid model unlocked.");
-    } else alert("Invalid key!");
-  };
+
+      // 清空输入框
+      if (upgradeKeyRef.current) {
+        upgradeKeyRef.current.value = "";
+      }
+
+      // 在弹窗里显示成功提示，由用户自己关闭弹窗
+      setUpgradeMsg({
+        type: "success",
+        text: "Upgrade successful! Paid model unlocked.",
+      });
+    } else {
+      setUpgradeMsg({
+        type: "error",
+        text: "Invalid key. Please check and try again.",
+      });
+    }
+  } catch (e) {
+    setUpgradeMsg({
+      type: "error",
+      text: e?.message || "Unexpected error, please try again.",
+    });
+  }
+};
+
 
   const confirmChangePassword = async () => {
-    if (!newPwd) { alert("Please enter a new password."); return; }
-    try {
-      const res = await changePassword({ newPassword: newPwd });
-      if (res?.ok) {
+  // 清空上一次的提示
+  setPwdMsg({ type: "", text: "" });
+
+  if (!newPwd) {
+    setPwdMsg({
+      type: "error",
+      text: "Please enter a new password.",
+    });
+    return;
+  }
+
+  // 使用统一的密码复杂度校验（与注册、管理员界面保持一致）
+  const err = validatePasswordComplexity(newPwd);
+  if (err) {
+    setPwdMsg({
+      type: "error",
+      text: err,
+    });
+    return;
+  }
+
+  try {
+    const res = await changePassword({ newPassword: newPwd });
+    if (res?.ok) {
+      // 成功提示放在弹窗内部
+      setPwdMsg({
+        type: "success",
+        text: "Password updated. It will take effect next login.",
+      });
+
+      // 稍等一会儿再自动关闭弹窗，用户能看到成功提示
+      setTimeout(() => {
         setPwdOpen(false);
         setNewPwd("");
         setShowNewPwd(false);
-        alert("Password updated. It will take effect next login.");
-      } else {
-        alert(res?.message || "Failed to update password.");
-      }
-    } catch (e) {
-      alert(e?.message || "Unexpected error.");
+        setPwdMsg({ type: "", text: "" });
+      }, 1200);
+    } else {
+      setPwdMsg({
+        type: "error",
+        text: res?.message || "Failed to update password.",
+      });
     }
-  };
+  } catch (e) {
+    setPwdMsg({
+      type: "error",
+      text: e?.message || "Unexpected error.",
+    });
+  }
+};
+
 
 
 
@@ -1018,9 +1089,26 @@ export default function Dashboard() {
 
       {/* ===== upgrade modal ===== */}
       {upgradeOpen && (
-        <div className={styles.backdrop} onClick={() => setUpgradeOpen(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.backdrop}
+          onClick={() => {
+            setUpgradeOpen(false);
+            setUpgradeMsg({ type: "", text: "" });
+          }}
+        >
+          <div
+            className={styles.modal}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>Enter upgrade key</div>
+
+            {/* 在弹窗内部显示 MessageBox（与弹窗同一层级） */}
+            <MessageBox
+              type={upgradeMsg.type || "error"}
+              message={upgradeMsg.text}
+              onClose={() => setUpgradeMsg({ type: "", text: "" })}
+            />
+
             <div className={styles.modalBody}>
               <input
                 className={styles.input}
@@ -1029,35 +1117,60 @@ export default function Dashboard() {
                 autoFocus
               />
             </div>
+
             <div className={styles.modalActions}>
-              <button className={styles.btnGhost} onClick={() => setUpgradeOpen(false)}>Cancel</button>
-              <button className={styles.btnPrimary} onClick={confirmUpgrade}>Confirm</button>
+              <button
+                className={styles.btnGhost}
+                onClick={() => {
+                  setUpgradeOpen(false);
+                  setUpgradeMsg({ type: "", text: "" });
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.btnPrimary}
+                onClick={confirmUpgrade}
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
       )}
 
+
       {/* ===== change password modal ===== */}
+      {/* ===== Change Password Modal ===== */}
       {pwdOpen && (
-        <div className={styles.backdrop} onClick={() => setPwdOpen(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.backdrop}
+          onClick={() => {
+            // 如果有错误提示，不要因为点外面就关闭
+            if (!pwdMsg.text) setPwdOpen(false);
+          }}
+        >
+          <div
+            className={styles.modal}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>Change Password</div>
+
             <div className={styles.modalBody}>
-              <label className={styles.modalLabel}>
-                New Password
-                <span className={styles.hint}>
-                  {" "}
-                  (At least 8 chars, include at least two types: uppercase / lowercase / number / special)
-                </span>
-              </label>
+              <label className={styles.modalLabel}>New Password</label>
+
               <div className={styles.field}>
                 <input
                   className={`${styles.input} ${styles.inputWithEye}`}
                   type={showNewPwd ? "text" : "password"}
                   placeholder="Enter a new password"
                   value={newPwd}
-                  onChange={(e) => setNewPwd(e.target.value)}
+                  onChange={(e) => {
+                    setNewPwd(e.target.value);
+                    setPwdMsg({ type: "", text: "" }); // 输入时清掉提示
+                  }}
                 />
+
                 <button
                   type="button"
                   className={styles.eyeBtn}
@@ -1068,14 +1181,41 @@ export default function Dashboard() {
                   <EyeIcon open={showNewPwd} />
                 </button>
               </div>
+
+              {/* ===== MessageBox：提示区域 ===== */}
+              {pwdMsg.text && (
+                <MessageBox 
+                  type={pwdMsg.type}
+                  onClose={() => setPwdMsg({ type: "", text: "" })}
+                >
+                  {pwdMsg.text}
+                </MessageBox>
+              )}
             </div>
+
             <div className={styles.modalActions}>
-              <button className={styles.btnGhost} onClick={() => setPwdOpen(false)}>Cancel</button>
-              <button className={styles.btnPrimary} onClick={confirmChangePassword}>Confirm</button>
+              <button
+                className={styles.btnGhost}
+                onClick={() => {
+                  setPwdOpen(false);
+                  setNewPwd("");
+                  setPwdMsg({ type: "", text: "" });
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                className={styles.btnPrimary}
+                onClick={confirmChangePassword}
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
       )}
+
       
     </div>
   );

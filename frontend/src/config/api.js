@@ -31,19 +31,24 @@ export const WS_TTS_URL = `${WS_BASE_URL}/ws/tts-audio`;
  * @param {object} options - Fetch options
  * @returns {Promise<{ok: boolean, data?: any, message?: string, code?: string}>}
  */
-export async function apiRequest(path, { method = 'GET', body, headers = {} } = {}) {
+
+
+export async function apiRequest(
+  path,
+  { method = "GET", body, headers = {} } = {}
+) {
   const url = `${API_BASE}${path}`;
 
   const fetchOptions = {
     method,
-    credentials: 'include', // Important: Include HttpOnly cookies
+    credentials: "include", // 必须：让浏览器自动带 HttpOnly Cookie
     headers: {
       ...headers,
     },
   };
 
   if (body) {
-    fetchOptions.headers['Content-Type'] = 'application/json';
+    fetchOptions.headers["Content-Type"] = "application/json";
     fetchOptions.body = JSON.stringify(body);
   }
 
@@ -54,16 +59,73 @@ export async function apiRequest(path, { method = 'GET', body, headers = {} } = 
     try {
       data = await res.json();
     } catch {
-      // Response might not be JSON (e.g., 204 No Content, plain text)
+      // 可能是纯文本 / 204，忽略 JSON 解析错误
     }
 
+    // =============== 🔥 统一抽取错误码 / 详情 ============
+    const detail = data?.detail;
+    const errorCode =
+      data?.error?.code ||
+      (typeof detail === "object" ? detail?.code : undefined) ||
+      data?.code;
+
+    // =============== 🔥 处理未登录：AUTH_REQUIRED ============
+    const isAuthRequired =
+      res.status === 401 &&
+      (
+        detail === "AUTH_REQUIRED" ||              // 后端直接 detail = "AUTH_REQUIRED"
+        errorCode === "AUTH_REQUIRED"             // 或 detail/code/error.code = "AUTH_REQUIRED"
+      );
+
+    if (isAuthRequired) {
+      console.warn("[api] AUTH_REQUIRED → redirect to /login");
+
+      // 清除前端登录状态
+      localStorage.removeItem("authUserId");
+      localStorage.removeItem("authUsername");
+      localStorage.removeItem("authUserRole");
+
+      // 强制跳转登录页
+      window.location.href = "/login";
+
+      return { ok: false, message: "AUTH_REQUIRED", code: "AUTH_REQUIRED" };
+    }
+
+    // =============== 🔥 处理无权限：admin only ============
+    const isAdminOnly =
+      res.status === 403 &&
+      (
+        detail === "ADMIN_ONLY" ||
+        errorCode === "ADMIN_ONLY"
+      );
+
+    if (isAdminOnly) {
+      console.warn("[api] ADMIN_ONLY → redirect to /dashboard");
+      window.location.href = "/dashboard";
+      return { ok: false, message: "ADMIN_ONLY", code: "ADMIN_ONLY" };
+    }
+
+    // =============== 一般错误处理 ==========================
     if (!res.ok || (data && data.success === false)) {
-      const msg = data?.error?.message || data?.detail || `HTTP ${res.status}`;
-      return { ok: false, message: msg, code: data?.error?.code || data?.code };
+      const msg =
+        data?.error?.message ||
+        (typeof detail === "string" ? detail : detail?.message) ||
+        `HTTP ${res.status}`;
+
+      return {
+        ok: false,
+        message: msg,
+        code: errorCode,
+      };
     }
 
+    // =============== 正常成功返回 ==========================
     return { ok: true, data: data?.data ?? data };
   } catch (error) {
-    return { ok: false, message: error.message || 'Network error', code: 'NETWORK_ERROR' };
+    return {
+      ok: false,
+      message: error.message || "Network error",
+      code: "NETWORK_ERROR",
+    };
   }
 }

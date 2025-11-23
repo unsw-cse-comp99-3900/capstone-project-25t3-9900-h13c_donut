@@ -1,3 +1,4 @@
+import torch
 import httpx
 import asyncio
 from typing import AsyncGenerator
@@ -169,7 +170,9 @@ def _get_melotts_model(language: str):
     local_config = os.path.join(lang_dir, 'config.json')
     
     # 设备选择（自动选择 GPU/CPU）
-    device = 'auto'
+    #device = 'auto'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[melotts] The device used is: {device}")
     
     # 加载模型
     if os.path.exists(local_ckpt) and os.path.exists(local_config):

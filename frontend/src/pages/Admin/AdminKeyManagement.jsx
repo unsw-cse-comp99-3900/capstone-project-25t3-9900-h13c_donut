@@ -1,14 +1,17 @@
-// frontend/src/pages/Admin/AdminKeyManagement.jsx
-// License Key Management Page - Batch Generate Keys & View Key List
-
 import React, { useState, useEffect } from 'react';
-import { batchGenerateKeys, listLicenseKeys } from '../../api/admin.js';
+import { batchGenerateKeys, listLicenseKeys, deleteLicenseKey } from '../../api/admin.js';
 import styles from './AdminKeyManagement.module.css';
+import MessageBox from "../../components/MessageBox";
 
 export default function AdminKeyManagement() {
   const [generating, setGenerating] = useState(false);
   const [generatedKeys, setGeneratedKeys] = useState([]);
   const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState('info');
+  const [detailMsg, setDetailMsg] = useState('');
+  const [detailMsgType, setDetailMsgType] = useState('info');
+
 
   // Form state - keyType and prefix are fixed, not shown to user
   const [formData, setFormData] = useState({
@@ -28,6 +31,25 @@ export default function AdminKeyManagement() {
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'used', 'unused'
+
+  // ====== helper: render masked preview for list table ======
+  const renderKeyPreview = (item) => {
+    // 1) 后端如果直接给了 preview / keyPreview（推荐）
+    if (item.preview) return item.preview;
+    if (item.keyPreview) return item.keyPreview;
+
+    // 2) 后端如果给了前缀 + 后四位
+    if (item.keyPrefix && item.keySuffixLast4) {
+      return `${item.keyPrefix}-****-****-${item.keySuffixLast4}`;
+    }
+
+    // 3) 后备方案：沿用原来的 id 前几位，保证页面不崩
+    if (item.id) {
+      return `${item.id.slice(0, 16)}...`;
+    }
+
+    return 'N/A';
+  };
 
   // Load license keys list
   const loadKeys = async (page = 1, status = 'all') => {
@@ -116,13 +138,90 @@ export default function AdminKeyManagement() {
     }
   };
 
-  // Copy single key
+    // Delete a single key
+  const handleDeleteKey = async (keyId) => {
+    setDetailMsg('');
+
+    const result = await deleteLicenseKey(keyId);
+
+    if (result.ok) {
+      setDetailMsgType('success');
+      setDetailMsg('License key deleted successfully.');
+      // 重新加载当前页，保持筛选条件
+      loadKeys(currentPage, statusFilter);
+    } else {
+      setDetailMsgType('error');
+      setDetailMsg(result.message || 'Failed to delete license key.');
+    }
+  };
+
+
+  // Copy single key (for newly generated keys)
   const handleCopyKey = (key) => {
-    navigator.clipboard.writeText(key).then(() => {
-      alert('Key copied to clipboard');
-    }).catch(() => {
-      alert('Failed to copy, please copy manually');
-    });
+    navigator.clipboard
+      .writeText(key)
+      .then(() => {
+        setMsgType('success');
+        setMsg('Key copied to clipboard.');
+      })
+      .catch(() => {
+        setMsgType('error');
+        setMsg('Failed to copy, please copy manually.');
+      });
+  };
+
+  // Copy all generated keys
+  const handleCopyAllGenerated = () => {
+    if (!generatedKeys.length) return;
+
+    const text = generatedKeys.map((item, idx) => {
+      const expires = item.expiresAt ? new Date(item.expiresAt).toLocaleString('en-US') : 'Never';
+      return `${idx + 1}. ${item.key}  (Type: ${item.keyType}, Expires: ${expires})`;
+    }).join('\n');
+
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setMsgType('success');
+        setMsg('All generated keys copied to clipboard.');
+      })
+      .catch(() => {
+        setMsgType('error');
+        setMsg('Failed to copy, please copy manually.');
+      });
+  };
+
+  // Export generated keys to CSV
+  const handleExportGeneratedCSV = () => {
+    if (!generatedKeys.length) return;
+
+    // CSV header
+    const header = ['Index', 'Key', 'KeyType', 'ExpiresAt'];
+    const rows = generatedKeys.map((item, idx) => [
+      idx + 1,
+      item.key,
+      item.keyType,
+      item.expiresAt || ''
+    ]);
+
+    const csvContent = [header, ...rows]
+      .map(cols => cols.map(v => `"${(v ?? '').toString().replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+
+    a.href = url;
+    a.download = `generated_keys_${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setMsgType('success');
+    setMsg('CSV file exported for generated keys.');
   };
 
   // Clear results
@@ -150,7 +249,15 @@ export default function AdminKeyManagement() {
           <h2>Batch Generate License Keys</h2>
           <p className={styles.subtitle}>Generated keys are displayed only once, please save them immediately</p>
         </div>
-
+        {msg && (
+          <div style={{ marginBottom: '12px' }}>
+            <MessageBox
+              type={msgType}
+              message={msg}
+              onClose={() => setMsg('')}
+            />
+          </div>
+        )}
         <div className={styles.form}>
           <div className={styles.formRow}>
             <div className={styles.formGroup}>
@@ -202,6 +309,18 @@ export default function AdminKeyManagement() {
             <div className={styles.resultsHeader}>
               <h3>Successfully Generated {generatedKeys.length} Keys</h3>
               <div className={styles.resultsActions}>
+                <button
+                  className={styles.btnCopyAll}
+                  onClick={handleCopyAllGenerated}
+                >
+                  Copy All
+                </button>
+                <button
+                  className={styles.btnExport}
+                  onClick={handleExportGeneratedCSV}
+                >
+                  Export CSV
+                </button>
                 <button className={styles.btnClear} onClick={handleClear}>
                   Clear
                 </button>
@@ -252,12 +371,20 @@ export default function AdminKeyManagement() {
       </div>
 
       {/* Section 2: License Key List */}
-      <div className={styles.section} style={{marginTop: '40px'}}>
+      <div className={styles.section} style={{ marginTop: '40px' }}>
         <div className={styles.header}>
           <h2>License Key List</h2>
           <p className={styles.subtitle}>View and manage all generated license keys</p>
         </div>
-
+        {detailMsg && (
+          <div style={{ marginBottom: '12px' }}>
+            <MessageBox
+              type={detailMsgType}
+              message={detailMsg}
+              onClose={() => setDetailMsg('')}
+            />
+          </div>
+        )}
         {/* Filters */}
         <div className={styles.filters}>
           <div className={styles.filterGroup}>
@@ -300,6 +427,7 @@ export default function AdminKeyManagement() {
                     <th>Status</th>
                     <th>Created At</th>
                     <th>Expires At</th>
+                    <th>Actions</th>  
                   </tr>
                 </thead>
                 <tbody>
@@ -310,28 +438,36 @@ export default function AdminKeyManagement() {
                       </td>
                     </tr>
                   ) : (
-                    keys.map((key) => (
-                      <tr key={key.id}>
+                    keys.map((item) => (
+                      <tr key={item.id}>
                         <td className={styles.keyCell}>
                           <span className={styles.keyPreview}>
-                            {key.id.slice(0, 16)}...
+                            {renderKeyPreview(item)}
                           </span>
                         </td>
                         <td>
                           <span className={styles.badgePaid}>Paid</span>
                         </td>
                         <td>
-                          <span className={key.isUsed ? styles.badgeUsed : styles.badgeUnused}>
-                            {key.isUsed ? 'Used' : 'Unused'}
+                          <span className={item.isUsed ? styles.badgeUsed : styles.badgeUnused}>
+                            {item.isUsed ? 'Used' : 'Unused'}
                           </span>
                         </td>
-                        <td>{new Date(key.createdAt).toLocaleString('en-US')}</td>
+                        <td>{item.createdAt ? new Date(item.createdAt).toLocaleString('en-US') : '-'}</td>
                         <td>
-                          {key.expiresAt ? (
-                            new Date(key.expiresAt).toLocaleString('en-US')
+                          {item.expiresAt ? (
+                            new Date(item.expiresAt).toLocaleString('en-US')
                           ) : (
                             <span className={styles.neverExpires}>Never expires</span>
                           )}
+                        </td>
+                        <td>
+                          <button
+                            className={styles.btnDelete}
+                            onClick={() => handleDeleteKey(item.id)}
+                          >
+                            Delete
+                          </button>
                         </td>
                       </tr>
                     ))

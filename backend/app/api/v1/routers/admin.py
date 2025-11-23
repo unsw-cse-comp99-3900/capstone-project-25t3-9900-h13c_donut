@@ -251,17 +251,25 @@ async def batch_generate_keys(body: BatchGenerateIn):
     items: List[GeneratedKeyItem] = []
 
     for _ in range(count):
-        # 确保 hash 唯一
+    # 确保 hash 唯一
         for __ in range(10):  # 最多尝试 10 次避免极端重复
             plain = _make_plain_key(prefix)
             h = LicenseKey.sha256_hex(plain)
             exists = await LicenseKey.filter(key_hash=h).exists()
             if not exists:
+                # ⭐ 从明文中解析 prefix 和 后 4 位
+                # plain 形如 FAT-AB12-CD34-EF56-GH78
+                parts = plain.split("-")
+                key_prefix = parts[0]
+                key_suffix_last4 = parts[-1]
+
                 lk = await LicenseKey.create(
                     key_hash=h,
                     key_type=key_type,
                     expires_at=expires_at,
                     is_used=False,
+                    prefix=key_prefix,
+                    suffix_last4=key_suffix_last4,
                 )
                 items.append(
                     GeneratedKeyItem(
@@ -273,8 +281,9 @@ async def batch_generate_keys(body: BatchGenerateIn):
                 )
                 break
         else:
-            # 连续 10 次碰撞，极小概率；报错提示
             raise HTTPException(status_code=500, detail="KEY_GENERATION_COLLISION")
+
+
 
     return {"keys": items}
 
@@ -310,6 +319,13 @@ async def list_license_keys(
     items = []
     for r in rows:
         expired = bool(r.expires_at and r.expires_at <= now)
+
+        if r.prefix and r.suffix_last4:
+            
+            key_preview = f"{r.prefix}-****-****-{r.suffix_last4}"
+        else:
+            key_preview = None  # 兼容旧数据
+
         items.append(
             {
                 "id": str(r.id),
@@ -320,10 +336,14 @@ async def list_license_keys(
                 "expiresAt": r.expires_at.isoformat() if r.expires_at else None,
                 "createdAt": r.created_at.isoformat() if r.created_at else None,
                 "isExpired": expired,
+                # ⭐ 新增字段：前缀 + **** + 后 4 位
+                "keyPreview": key_preview,
             }
         )
 
     return {"items": items, "offset": offset, "limit": limit, "total": total}
+
+
 
 
 @router.get(
