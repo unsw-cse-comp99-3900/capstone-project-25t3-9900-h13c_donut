@@ -22,7 +22,8 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 4) Install torch GPU first, then other deps
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    python -m nltk.downloader averaged_perceptron_tagger_eng -d /usr/local/nltk_data
 # 5) Copy project (excluding models via .dockerignore)
 COPY . .
 
