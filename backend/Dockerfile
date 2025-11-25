@@ -1,8 +1,7 @@
 # 1) Base image with CUDA 11.8 + PyTorch 2.1.2
 FROM python:3.11-slim
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=Australia/Sydney \
+ENV TZ=Australia/Sydney \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -23,11 +22,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 4) Install torch GPU first, then other deps
-RUN pip install --no-cache-dir \
-        "torch==2.1.2+cu118" "torchaudio==2.1.2+cu118" \
-        --index-url https://download.pytorch.org/whl/cu118 \
-    && pip install --no-cache-dir -r requirements.txt
-
+RUN pip install --no-cache-dir -r requirements.txt
 # 5) Copy project (excluding models via .dockerignore)
 COPY . .
 

@@ -37,5 +37,3 @@ src/test/
 **/*.test.ts
 **/*.test.tsx
 
-# Vite test coverage
-index.html

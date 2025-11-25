@@ -13,7 +13,7 @@ services:
       - "5432:5432"
     networks:
       - fat-net
-    # ✅ 新增：健康检查，确认 DB 真正 ready
+    
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d fat"]
       interval: 3s
@@ -25,7 +25,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: fat-backend
-    # ✅ 改成依赖 db 的 health 状态，而不是仅仅“先启动”
+    
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +39,7 @@ services:
       - fat-net
     working_dir: /app
 
-    # ✅ 仍然自动 init-db，但此时 DB 已经 ready 了
+    
     command: >
       sh -c "
       aerich init-db || true &&
