@@ -29,13 +29,13 @@ coverage/
 .vite/
 *.lcov
 
-# Test code
-src/**/__tests__/
-src/test/
-**/*.test.js
-**/*.test.jsx
-**/*.test.ts
-**/*.test.tsx
+# # Test code
+# src/**/__tests__/
+# src/test/
+# **/*.test.js
+# **/*.test.jsx
+# **/*.test.ts
+# **/*.test.tsx
 
-# Vite test coverage
-index.html
+# # Vite test coverage
+# index.html

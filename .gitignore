@@ -16,18 +16,18 @@ backend/coverage.json
 backend/.coverage.*
 backend/.cache/
 
-# Backend test code
-backend/tests/
+# # Backend test code
+# backend/tests/
 
 # Frontend test coverage
 frontend/coverage/
 frontend/.vitest/
 frontend/.vite/
 
-# Frontend test code
-frontend/src/**/__tests__/
-frontend/src/test/
-frontend/TESTING.md
+# # Frontend test code
+# frontend/src/**/__tests__/
+# frontend/src/test/
+# frontend/TESTING.md
 
 # Test artifacts
 *.log

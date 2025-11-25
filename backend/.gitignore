@@ -32,6 +32,6 @@ coverage.json
 .tox/
 .pytest_cache/
 
-# Test code
-tests/
-tests/README.md
+# # Test code
+# tests/
+# tests/README.md
