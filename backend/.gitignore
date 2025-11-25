@@ -1,5 +1,6 @@
 # env & secrets
 .env
+.docker
 *.pem
 *.key
 
@@ -35,3 +36,6 @@ coverage.json
 # # Test code
 # tests/
 # tests/README.md
+# Test code
+
+app/models/tts_models/
