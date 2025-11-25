@@ -14,7 +14,7 @@ export default function AdminUserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 全局提示
+  // Global messages
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -90,13 +90,13 @@ export default function AdminUserManagement() {
 
   // Submit edit
   const handleEditSubmit = async () => {
-  // 清除上一条提示
+  // Clear previous message
   setEditMsg({ type: "", text: "" });
 
   const username = editForm.username.trim();
   const email = (editForm.email || "").trim();
 
-  // 用户名必填
+  // Username is required
   if (!username) {
     setEditMsg({
       type: "error",
@@ -105,7 +105,7 @@ export default function AdminUserManagement() {
     return;
   }
 
-  // 邮箱格式校验（允许为空）
+  // Email format validation (allow empty)
   if (email) {
     const emailErr = validateEmailFormat(email);
     if (emailErr) {
@@ -128,7 +128,7 @@ export default function AdminUserManagement() {
       text: "User information updated successfully.",
     });
 
-    // 延迟一点关闭，让用户看到提示
+    // Delay closing to let user see the message
     setTimeout(() => {
       closeEditModal();
       loadUsers(currentPage, searchQuery);
@@ -236,7 +236,7 @@ export default function AdminUserManagement() {
         </div>
       </div>
 
-      {/* 全局消息提示 */}
+      {/* Global message notifications */}
       <MessageBox
         type="error"
         message={error}
@@ -345,7 +345,7 @@ export default function AdminUserManagement() {
           <div className={styles.modalContent}>
             <h3>Edit User</h3>
 
-            {/* ➜ 在弹窗内部显示格式错误 / 成功提示 */}
+            {/* Display format error / success message inside modal */}
             <MessageBox
               type={editMsg.type || "error"}
               message={editMsg.text}
@@ -425,7 +425,7 @@ export default function AdminUserManagement() {
           <div className={styles.modalContent}>
             <h3>Reset Password</h3>
 
-            {/* ➜ 在弹窗内部展示复杂度/错误提示 */}
+            {/* Display complexity/error message inside modal */}
             <MessageBox
               type={resetMsg.type || "error"}
               message={resetMsg.text}

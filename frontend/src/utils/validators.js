@@ -1,9 +1,9 @@
 // src/util/validators.js
 
 /**
- * 密码复杂度校验：
- * - 至少 8 位
- * - 至少包含以下四类中的两类：大写字母 / 小写字母 / 数字 / 特殊字符
+ * Password complexity validation:
+ * - At least 8 characters
+ * - Must contain at least two of the following four types: uppercase letters / lowercase letters / digits / special characters
  */
 export function validatePasswordComplexity(pwd) {
   if (!pwd || pwd.length < 8) {
@@ -21,11 +21,11 @@ export function validatePasswordComplexity(pwd) {
     return "Password must contain at least two of: uppercase, lowercase, number, special character.";
   }
 
-  return null; // 通过校验
+  return null; // Validation passed
 }
 
 /**
- * 邮箱格式校验
+ * Email format validation
  */
 export function validateEmailFormat(email) {
   if (!email) return "Email is required.";

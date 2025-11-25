@@ -6,21 +6,21 @@ from tortoise import fields, models
 
 class LicenseKey(models.Model):
     """
-    购买 / 升级的兑换密钥。
-    - key_hash: sha256(明文key) 的 64位十六进制字符串，唯一（不存明文）
-    - prefix: 明文 key 的前缀（例如 FAT）
-    - suffix_last4: 明文 key 的最后 4 位（例如 3F9C）
-    - expires_at: 过期时间（可选）
-    - is_used: 是否已被兑换
-    - used_by: 兑换者（User 外键，可为空）
-    - used_at: 兑换时间
-    - created_at: 创建时间
+    Purchase / upgrade redemption key.
+    - key_hash: sha256(plain text key) 64-character hexadecimal string, unique (plain text not stored)
+    - prefix: Plain text key prefix (e.g., FAT)
+    - suffix_last4: Last 4 characters of plain text key (e.g., 3F9C)
+    - expires_at: Expiration time (optional)
+    - is_used: Whether already redeemed
+    - used_by: Redeemer (User foreign key, can be null)
+    - used_at: Redemption time
+    - created_at: Creation time
     """
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     key_hash = fields.CharField(max_length=64, unique=True, index=True)
-    key_type = fields.CharField(max_length=16, default="paid")  # 预留类型：paid / trial / etc
+    key_type = fields.CharField(max_length=16, default="paid")  # Reserved types: paid / trial / etc
 
-    # ⭐ 新增：仅用于展示，不是完整密钥
+    # ⭐ New: Only for display, not the complete key
     prefix = fields.CharField(max_length=8, null=True)
     suffix_last4 = fields.CharField(max_length=4, null=True)
 

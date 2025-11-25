@@ -18,30 +18,30 @@ export function createStreamClient({
   let mediaStream = null;
   let mediaRecorder = null;
 
-  // ====== （新增）采集侧降噪处理相关 ======
-  let procAudioCtx = null;      // 专用于麦克风降噪处理的 AudioContext（与 TTS 播放分开）
-  let procDest = null;          // MediaStreamDestination，输出给 MediaRecorder
+  // ====== (New) Capture-side noise reduction processing ======
+  let procAudioCtx = null;      // AudioContext dedicated to microphone noise reduction (separate from TTS playback)
+  let procDest = null;          // MediaStreamDestination, output to MediaRecorder
 
-  // ===== TTS 播放相关 =====
+  // ===== TTS playback related =====
   let ttsMime = "audio/mpeg";
-  let ttsChunks = []; // 收集所有二进制分片，最后拼成 Blob
+  let ttsChunks = []; // Collect all binary chunks, finally combine into Blob
 
-  // -- MSE 播放器 --
+  // -- MSE player --
   let audioEl = null;
   let mediaSource = null;
   let sourceBuffer = null;
-  let mseQueue = [];         // Uint8Array 队列，等待 append
+  let mseQueue = [];         // Uint8Array queue, waiting to append
   let mseReady = false;
   let mseEnded = false;
 
-  // -- WebAudio 退化播放器（仅在 MSE 不可用时启用） --
-  let audioContext = null;   // 注意：此 audioContext 仅用于 TTS 回放的退化方案
-  let decodeQueue = [];      // ArrayBuffer 队列
+  // -- WebAudio fallback player (only enabled when MSE is unavailable) --
+  let audioContext = null;   // Note: This audioContext is only used for TTS playback fallback
+  let decodeQueue = [];      // ArrayBuffer queue
   let decodePlaying = false;
 
   let currentVolume = Math.max(0, Math.min(1, outputVolume));
 
-  // ========== 工具 ==========
+  // ========== Utilities ==========
   function sendJSON(ws, obj) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
   }
@@ -51,13 +51,13 @@ export function createStreamClient({
     audioEl = document.createElement("audio");
     audioEl.autoplay = true;
     audioEl.controls = false;
-    audioEl.style.display = "none"; // 不占位
+    audioEl.style.display = "none"; // Don't occupy space
     audioEl.volume = currentVolume;
     document.body.appendChild(audioEl);
     return audioEl;
   }
 
-  // ========== MSE 实现 ==========
+  // ========== MSE implementation ==========
   function mseInit() {
     const el = ensureAudioElement();
     if (!("MediaSource" in window)) return false;
@@ -137,9 +137,9 @@ export function createStreamClient({
     mseEnded = false;
   }
 
-  // ========== WebAudio 退化实现（攒包后解码） ==========
-  const MIN_CHUNK_BYTES = 24 * 1024; // 累计到 24KB 再解码
-  const MAX_BUFFER_BYTES = 1024 * 1024; // 上限 1MB
+  // ========== WebAudio fallback implementation (decode after buffering) ==========
+  const MIN_CHUNK_BYTES = 24 * 1024; // Accumulate to 24KB before decoding
+  const MAX_BUFFER_BYTES = 1024 * 1024; // Upper limit 1MB
 
   async function waPlayNext() {
     if (decodePlaying) return;
@@ -195,11 +195,11 @@ export function createStreamClient({
     }
   }
 
-  // ========== 外部 API ==========
+  // ========== External API ==========
   async function open() {
     console.log("[client] createStreamClient.open() called");
 
-    // 1) 文本通道
+    // 1) Text channel
     await new Promise((resolve, reject) => {
       textWS = new WebSocket(WS_TEXT_URL);
       textWS.onopen = () => {
@@ -217,7 +217,7 @@ export function createStreamClient({
           } else if (msg.type === "final") {
             onText?.({ final: msg.text, ts: msg.ts, confidence: msg.confidence });
           } else if (msg.type === "transcripts_updated") {
-            // ✨ 收到后端 GPT 格式化完成的通知
+            // ✨ Received backend GPT formatting completion notification
             onText?.({ type: "transcripts_updated", count: msg.count });
           } else {
             console.warn("[client] textWS unknown msg:", msg);
@@ -228,7 +228,7 @@ export function createStreamClient({
       };
     });
 
-    // 2) TTS 通道
+    // 2) TTS channel
     if (WS_TTS_URL) {
       try {
         await new Promise((resolve, reject) => {
@@ -292,7 +292,7 @@ export function createStreamClient({
       }
     }
 
-    // 3) 上传通道
+    // 3) Upload channel
     await new Promise((resolve, reject) => {
       uploadWS = new WebSocket(WS_UPLOAD_URL);
       uploadWS.onopen = () => {
@@ -326,11 +326,11 @@ export function createStreamClient({
     }
   }
 
-  // ====== （修改）采集 + 降噪 + 发送 ======
+  // ====== (Modified) Capture + noise reduction + send ======
   async function startMic() {
     console.log("[client] requesting mic");
     try {
-      // 启用浏览器内建降噪/回声消除/自动增益，低延迟且跨平台
+      // Enable browser built-in noise suppression/echo cancellation/auto gain, low latency and cross-platform
       mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           noiseSuppression: true,
@@ -346,18 +346,18 @@ export function createStreamClient({
       throw e;
     }
 
-    // 轻量 WebAudio 处理链（高通→低通→压缩），输出到 MediaStreamDestination
+    // Lightweight WebAudio processing chain (highpass → lowpass → compression), output to MediaStreamDestination
     try {
       procAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       const src = procAudioCtx.createMediaStreamSource(mediaStream);
 
       const highpass = procAudioCtx.createBiquadFilter();
       highpass.type = "highpass";
-      highpass.frequency.value = 90; // 80~120 可调
+      highpass.frequency.value = 90; // Adjustable 80~120
 
       const lowpass = procAudioCtx.createBiquadFilter();
       lowpass.type = "lowpass";
-      lowpass.frequency.value = 6500; // 6~8 kHz 可调
+      lowpass.frequency.value = 6500; // Adjustable 6~8 kHz
 
       const comp = procAudioCtx.createDynamicsCompressor();
       comp.threshold.setValueAtTime(-50, procAudioCtx.currentTime);
@@ -373,7 +373,7 @@ export function createStreamClient({
       highpass.connect(lowpass);
       lowpass.connect(comp);
       comp.connect(procDest);
-      // 不本地监听：如需监听，可额外 comp.connect(procAudioCtx.destination);
+      // No local monitoring: If monitoring is needed, can additionally comp.connect(procAudioCtx.destination);
     } catch (e) {
       console.warn("[client] WebAudio pipeline failed, fallback to raw stream:", e);
       procDest = null;
@@ -383,7 +383,7 @@ export function createStreamClient({
       ? "audio/webm;codecs=opus"
       : "audio/webm";
 
-    // 录"处理后的流"，失败则录原始流
+    // Record "processed stream", fallback to raw stream if failed
     const streamForRecorder = procDest?.stream || mediaStream;
     mediaRecorder = new MediaRecorder(streamForRecorder, {
       mimeType: mime,
@@ -396,7 +396,7 @@ export function createStreamClient({
       }
     };
 
-    mediaRecorder.start(40); // 每 40ms 一片
+    mediaRecorder.start(40); // One chunk every 40ms
   }
 
   async function stopMic() {
@@ -405,7 +405,7 @@ export function createStreamClient({
     mediaRecorder = null;
     mediaStream = null;
 
-    // 清理采集侧处理资源
+    // Clean up capture-side processing resources
     procDest = null;
     if (procAudioCtx) {
       try { await procAudioCtx.close(); } catch { /* Ignore if already closed */ }
@@ -418,16 +418,16 @@ export function createStreamClient({
     try { ttsWS?.close(); } catch { /* Ignore if already closed */ }
     try { uploadWS?.close(); } catch { /* Ignore if already closed */ }
 
-    // 释放 MSE
+    // Release MSE
     try { mseTearDown(); } catch { /* Ignore teardown errors */ }
 
-    // 释放 TTS 退化回放用的 AudioContext（与采集侧不同）
+    // Release AudioContext used for TTS fallback playback (different from capture side)
     if (audioContext) {
       try { await audioContext.close(); } catch { /* Ignore if already closed */ }
       audioContext = null;
     }
 
-    // 释放采集侧处理资源（防止未调用 stopMic 就 close 的情况）
+    // Release capture-side processing resources (prevent case where close is called without stopMic)
     procDest = null;
     if (procAudioCtx) {
       try { await procAudioCtx.close(); } catch { /* Ignore if already closed */ }

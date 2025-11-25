@@ -52,7 +52,7 @@ export default function RegisterPage() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 新增：统一的错误/成功信息
+  // New: Unified error/success messages
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -73,14 +73,14 @@ export default function RegisterPage() {
       return;
     }
 
-    // 邮箱格式校验
+    // Email format validation
     const emailErr = validateEmailFormat(email);
     if (emailErr) {
       setErrorMsg(emailErr);
       return;
     }
 
-    // 密码复杂度校验
+    // Password complexity validation
     const pwdErr = validatePasswordComplexity(password);
     if (pwdErr) {
       setErrorMsg(pwdErr);
@@ -100,7 +100,7 @@ export default function RegisterPage() {
         setSuccessMsg(msg);
         setErrorMsg("");
 
-        // 成功后跳转到登录页
+        // After success, redirect to login page
         setTimeout(() => {
           navigate("/login", { replace: true });
         }, 800);
@@ -133,7 +133,7 @@ export default function RegisterPage() {
       </h1>
 
       <div className={styles.card}>
-        {/* 统一的提示框：错误 or 成功 */}
+        {/* Unified message box: error or success */}
         {errorMsg && (
           <MessageBox
             type="error"
@@ -188,7 +188,7 @@ export default function RegisterPage() {
             </button>
           </div>
 
-          {/* 可选：在密码下面加一行静态规则提示 */}
+          {/* Optional: Add a static rule hint below password */}
           <p className={styles.hint}>
             Password must be at least 8 characters and contain at least two of:
             uppercase, lowercase, number, special character.

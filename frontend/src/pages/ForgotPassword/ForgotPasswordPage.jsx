@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
 
   const [loading, setLoading] = useState(false);
 
-  // 统一的提示信息
+  // Unified message notifications
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -147,7 +147,7 @@ export default function ForgotPasswordPage() {
         setSuccessMsg(msg);
         setErrorMsg("");
         setModalOpen(false);
-        // 重置密码成功后跳回登录页
+        // After successful password reset, redirect to login page
         setTimeout(() => {
           navigate("/login", { replace: true });
         }, 800);
@@ -174,7 +174,7 @@ export default function ForgotPasswordPage() {
       <h1 className={styles.title}>Reset your password</h1>
 
       <div className={styles.card}>
-        {/* 顶部统一提示 */}
+        {/* Top unified message notifications */}
         {errorMsg && (
           <MessageBox
             type="error"

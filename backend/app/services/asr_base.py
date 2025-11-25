@@ -1,7 +1,7 @@
 """
-ASR 服务抽象接口
+ASR Service Abstract Interface
 
-为不同的 ASR 供应商（OpenAI Whisper API / 本地 Whisper / 其他）提供统一接口。
+Provides unified interface for different ASR providers (OpenAI Whisper API / Local Whisper / Others).
 """
 from abc import ABC, abstractmethod
 from typing import List, Optional
@@ -10,14 +10,14 @@ from dataclasses import dataclass
 
 @dataclass
 class WordTimestamp:
-    """词级别时间戳"""
+    """Word-level timestamp"""
     word: str
-    start_sec: float  # 相对时间（秒），从音频开始算起
+    start_sec: float  # Relative time (seconds), from audio start
     end_sec: float
     
     @property
     def start_ms(self) -> int:
-        """转换为毫秒"""
+        """Convert to milliseconds"""
         return int(self.start_sec * 1000)
     
     @property
@@ -28,18 +28,18 @@ class WordTimestamp:
 @dataclass
 class TranscriptSegment:
     """
-    转录片段（sentence/segment 级别）
+    Transcription segment (sentence/segment level)
     
-    注意：这里的时间戳是相对时间（从音频开始），不是 Unix 时间戳
+    Note: Timestamps here are relative time (from audio start), not Unix timestamps
     """
     text: str
-    start_sec: float  # 相对时间（秒）
+    start_sec: float  # Relative time (seconds)
     end_sec: float
-    words: Optional[List[WordTimestamp]] = None  # 可选的词级别时间戳
+    words: Optional[List[WordTimestamp]] = None  # Optional word-level timestamps
     
     @property
     def start_ms(self) -> int:
-        """转换为毫秒"""
+        """Convert to milliseconds"""
         return int(self.start_sec * 1000)
     
     @property
@@ -52,15 +52,15 @@ class TranscriptSegment:
 
 @dataclass
 class TranscriptionResult:
-    """完整的转录结果"""
-    full_text: str  # 完整文本（用于 TTS）
-    segments: List[TranscriptSegment]  # 分段文本（用于显示和说话人匹配）
-    language: Optional[str] = None  # 检测到的语言
-    duration_sec: Optional[float] = None  # 音频总时长
+    """Complete transcription result"""
+    full_text: str  # Full text (for TTS)
+    segments: List[TranscriptSegment]  # Segmented text (for display and speaker matching)
+    language: Optional[str] = None  # Detected language
+    duration_sec: Optional[float] = None  # Total audio duration
 
 
 class ASRService(ABC):
-    """ASR 服务抽象基类"""
+    """ASR Service Abstract Base Class"""
     
     @abstractmethod
     async def transcribe(
@@ -70,27 +70,27 @@ class ASRService(ABC):
         word_timestamps: bool = False
     ) -> TranscriptionResult:
         """
-        转录音频文件
+        Transcribe audio file
         
-        参数：
-        - audio_path: WAV 文件路径（16kHz 单声道）
-        - language: 可选的语言提示（如 "en", "zh"）
-        - word_timestamps: 是否返回词级别时间戳
+        Parameters:
+        - audio_path: WAV file path (16kHz mono)
+        - language: Optional language hint (e.g., "en", "zh")
+        - word_timestamps: Whether to return word-level timestamps
         
-        返回：
-        - TranscriptionResult: 包含完整文本和分段信息
+        Returns:
+        - TranscriptionResult: Contains full text and segment information
         """
         pass
     
     @abstractmethod
     def is_available(self) -> bool:
-        """检查服务是否可用"""
+        """Check if service is available"""
         pass
     
     @property
     @abstractmethod
     def name(self) -> str:
-        """服务名称（如 "OpenAI Whisper API", "Local Whisper"）"""
+        """Service name (e.g., "OpenAI Whisper API")"""
         pass
 
 

@@ -17,3 +17,21 @@ __pycache__/
 # build artifacts
 dist/
 build/
+
+# Testing & Coverage Reports
+htmlcov/
+.pytest_cache/
+.coverage
+*.coverage
+coverage.xml
+coverage.json
+.coverage.*
+.cache/
+*.log
+.hypothesis/
+.tox/
+.pytest_cache/
+
+# Test code
+tests/
+tests/README.md

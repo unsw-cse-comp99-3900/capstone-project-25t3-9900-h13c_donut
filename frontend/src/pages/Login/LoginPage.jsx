@@ -49,7 +49,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(""); // 新增：错误消息
+  const [error, setError] = useState(""); // New: error message
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -66,26 +66,27 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const resp = await login({ username: u, password: p });
-      if (resp.ok) {
+      // Defensive check: ensure resp exists and has ok property
+      if (resp && resp.ok === true) {
         // store session
         localStorage.setItem("authToken", resp.token || "mock-token");
         localStorage.setItem("authUserId", resp.user?.id || u);
         localStorage.setItem("authUsername", resp.user?.username || u);
         localStorage.setItem("authUserRole", resp.user?.role || "user");
 
-        // 根据角色跳转：管理员 → /admin，普通用户 → /dashboard
+        // Navigate based on role: admin → /admin, regular user → /dashboard
         if (resp.user?.role === "admin") {
           navigate("/admin");
         } else {
           navigate("/dashboard");
         }
       } else {
-        // 统一处理 message，避免 [Object Object]
+        // Unified message processing, avoid [Object Object]
         const msg =
-          typeof resp.message === "string"
+          resp && typeof resp.message === "string"
             ? resp.message
-            : resp.message?.message ||
-              resp.message?.detail ||
+            : resp?.message?.message ||
+              resp?.message?.detail ||
               "Login failed. Please check your username and password.";
         setError(msg);
       }
@@ -107,7 +108,7 @@ export default function LoginPage() {
       </h1>
 
       <div className={styles.card}>
-        {/* 统一错误提示区域 */}
+        {/* Unified error message area */}
         <MessageBox
           type="error"
           message={error}

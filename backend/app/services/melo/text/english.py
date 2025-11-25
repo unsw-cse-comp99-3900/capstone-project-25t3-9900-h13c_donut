@@ -11,8 +11,8 @@ from .english_utils.number_norm import normalize_numbers
 
 def distribute_phone(n_phone, n_word):
     """
-    将 n_phone 个音素均匀分配到 n_word 个词段中
-    返回一个列表，表示每个词段分配到的音素数量
+    Evenly distribute n_phone phonemes across n_word word segments
+    Returns a list representing the number of phonemes allocated to each word segment
     """
     phones_per_word = [0] * n_word
     for task in range(n_phone):

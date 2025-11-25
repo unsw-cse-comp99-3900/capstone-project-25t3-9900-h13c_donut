@@ -4,7 +4,7 @@
   padding: 4px 10px;
   border-radius: 4px;
   border: none;
-  background-color: #f87171; /* 红色 */
+  background-color: #f87171; /* Red */
   color: #fff;
   cursor: pointer;
   font-size: 12px;
@@ -523,7 +523,7 @@
   color: #909399;
 }
 
-/* 响应式设计 */
+/* Responsive design */
 @media (max-width: 768px) {
   .formRow {
     grid-template-columns: 1fr;

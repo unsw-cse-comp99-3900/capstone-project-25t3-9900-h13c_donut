@@ -149,7 +149,7 @@ def _g2p(segments):
                     assert tone in "12345"
 
                     if c:
-                        # 多音节
+                        # Multi-syllable
                         v_rep_map = {
                             "uei": "ui",
                             "iou": "iu",
@@ -158,7 +158,7 @@ def _g2p(segments):
                         if v_without_tone in v_rep_map.keys():
                             pinyin = c + v_rep_map[v_without_tone]
                     else:
-                        # 单音节
+                        # Single syllable
                         pinyin_rep_map = {
                             "ing": "ying",
                             "i": "yi",
@@ -248,6 +248,6 @@ if __name__ == "__main__":
     import pdb; pdb.set_trace()
 
 
-# # 示例用法
+# # Example usage
 # text = "这是一个示例文本：,你好！这是一个测试...."
-# print(g2p_paddle(text))  # 输出: 这是一个示例文本你好这是一个测试
+# print(g2p_paddle(text))  # Output: 这是一个示例文本你好这是一个测试

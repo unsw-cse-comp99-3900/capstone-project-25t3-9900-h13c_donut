@@ -1,11 +1,11 @@
 """
-GPT 文本整理服务
+GPT Text Formatting Service
 
-使用 OpenAI GPT API 对转录文本进行：
-1. 分句（按说话意图分割）
-2. 标点符号修正
-3. 语法优化
-4. 去除重复和无意义的语气词
+Uses OpenAI GPT API to format transcription text:
+1. Sentence segmentation (split by speaking intent)
+2. Punctuation correction
+3. Grammar optimization
+4. Remove repetition and meaningless fillers
 """
 import httpx
 import json
@@ -14,7 +14,7 @@ from ..config import settings
 
 
 class GPTFormatterService:
-    """GPT 文本格式化服务"""
+    """GPT Text Formatting Service"""
     
     def __init__(self):
         self.api_key = settings.openai_api_key
@@ -22,30 +22,30 @@ class GPTFormatterService:
         self.api_url = "https://api.openai.com/v1/chat/completions"
     
     def is_available(self) -> bool:
-        """检查 API key 是否配置"""
+        """Check if API key is configured"""
         return bool(self.api_key) and settings.enable_gpt_formatting
     
     async def format_conversation(self, raw_text: str, language: str = "en") -> List[Dict]:
         """
-        使用 GPT 整理对话文本
+        Format conversation text using GPT
         
-        参数:
-            raw_text: 原始转录文本
-            language: 语言代码 (en, zh, etc.)
+        Parameters:
+            raw_text: Raw transcription text
+            language: Language code (en, zh, etc.)
         
-        返回:
+        Returns:
             [
-                {"text": "句子1", "speaker": "A"},
-                {"text": "句子2", "speaker": "B"},
+                {"text": "Sentence 1", "speaker": "A"},
+                {"text": "Sentence 2", "speaker": "B"},
                 ...
             ]
         """
         if not self.is_available():
-            # 如果 GPT 不可用，返回简单分句
+            # If GPT unavailable, return simple split
             return self._simple_split(raw_text)
         
         try:
-            # 构建 prompt
+            # Build prompt
             system_prompt = self._build_system_prompt(language)
             user_prompt = f"""This is the COMPLETE raw transcript from ONE recording session. Format ONLY this text:
 
@@ -54,7 +54,7 @@ Raw transcript:
 
 (End of transcript - this is all the text from this recording)"""
             
-            # 调用 GPT API
+            # Call GPT API
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
@@ -66,8 +66,8 @@ Raw transcript:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                "temperature": 0.0,  # 最低温度，完全确定性，避免幻觉
-                "response_format": {"type": "json_object"}  # 要求返回 JSON
+                "temperature": 0.0,  # Minimum temperature, fully deterministic, avoid hallucinations
+                "response_format": {"type": "json_object"}  # Require JSON response
             }
             
             print(f"[GPT Formatter] Calling {self.model} to format conversation...")
@@ -76,7 +76,7 @@ Raw transcript:
                 resp.raise_for_status()
                 result = resp.json()
             
-            # 解析结果
+            # Parse result
             content = result["choices"][0]["message"]["content"]
             formatted_data = json.loads(content)
             
@@ -87,11 +87,11 @@ Raw transcript:
             
         except Exception as e:
             print(f"[GPT Formatter] ❌ Error: {e}")
-            # 出错时回退到简单分句
+            # Fallback to simple split on error
             return self._simple_split(raw_text)
     
     def _build_system_prompt(self, language: str) -> str:
-        """构建 GPT system prompt"""
+        """Build GPT system prompt"""
 
         return """You are a conversation formatter. Your ONLY job is to format the EXACT text provided below.
 
@@ -141,9 +141,9 @@ Output format (JSON):
         language: str = "en"
     ) -> Dict:
         """
-        比较并合并 Web Speech 和 Whisper 的文本，返回最佳转录
+        Compare and merge Web Speech and Whisper texts, return best transcription
         
-        返回:
+        Returns:
         {
             "sentences": [
                 {"text": "...", "speaker": "A"},
@@ -152,7 +152,7 @@ Output format (JSON):
         }
         """
         if not self.is_available():
-            # Fallback: 使用 Whisper 文本
+            # Fallback: Use Whisper text
             sentences = self._simple_split(whisper_text)
             return {
                 "sentences": sentences
@@ -228,21 +228,21 @@ Please compare both and create the best possible transcription by choosing the m
             print(f"[GPT Formatter] ❌ Comparison error: {e}")
             import traceback
             traceback.print_exc()
-            # Fallback: 使用 Whisper 文本
+            # Fallback: Use Whisper text
             sentences = self._simple_split(whisper_text)
             return {
                 "sentences": sentences
             }
     
     def _simple_split(self, text: str) -> List[Dict]:
-        """简单分句（fallback）"""
+        """Simple sentence splitting (fallback)"""
         import re
         
-        # 按标点符号分句
+        # Split by punctuation
         sentences = re.split(r'[.!?。！？]+', text)
         sentences = [s.strip() for s in sentences if s.strip()]
         
-        # 简单分配说话人（交替）
+        # Simple speaker assignment (alternating)
         result = []
         for i, sent in enumerate(sentences):
             speaker = "A" if i % 2 == 0 else "B"
@@ -251,6 +251,6 @@ Please compare both and create the best possible transcription by choosing the m
         return result
 
 
-# 全局单例
+# Global singleton
 gpt_formatter = GPTFormatterService()
 

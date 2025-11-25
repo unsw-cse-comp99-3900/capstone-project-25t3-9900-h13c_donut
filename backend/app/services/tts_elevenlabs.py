@@ -3,15 +3,15 @@ import httpx
 import asyncio
 from typing import AsyncGenerator
 from app.core.pubsub import channel
-from app.config import settings  # ✅ 统一使用 config.py 配置
+from app.config import settings  # ✅ Use unified config.py settings
 
 def _pick_voice_id_by_accent(accent: str) -> str:
     """
-    根据口音选择对应的 Voice ID
+    Select corresponding Voice ID based on accent
     
-    配置优先级：
-    1. .env 文件中的 VOICE_ID_AMERICAN 等
-    2. config.py 中的硬编码默认值
+    Configuration priority:
+    1. VOICE_ID_AMERICAN etc. in .env file
+    2. Hardcoded default values in config.py
     """
     a = (accent or "").lower()
     if "australia" in a: 
@@ -22,7 +22,7 @@ def _pick_voice_id_by_accent(accent: str) -> str:
         return settings.voice_id_chinese
     if "india" in a: 
         return settings.voice_id_india
-    # 默认美式英语
+    # Default to American English
     return settings.voice_id_american
 
 async def _stream_elevenlabs(
@@ -34,19 +34,19 @@ async def _stream_elevenlabs(
     use_speaker_boost: bool = True
 ) -> AsyncGenerator[bytes, None]:
     """
-    调用 ElevenLabs API 进行流式 TTS
+    Call ElevenLabs API for streaming TTS
     
-    参数：
-    - text: 要合成的文本
-    - voice_id: ElevenLabs 声音 ID
-    - stability: 稳定性 (0-1)，越高越稳定，越低越富有表现力
-    - similarity_boost: 相似度增强 (0-1)，与原始声音的相似度
-    - style: 风格夸张度 (0-1)，语音的表现力
-    - use_speaker_boost: 是否启用说话者增强
+    Parameters:
+    - text: Text to synthesize
+    - voice_id: ElevenLabs voice ID
+    - stability: Stability (0-1), higher = more stable, lower = more expressive
+    - similarity_boost: Similarity boost (0-1), similarity to original voice
+    - style: Style exaggeration (0-1), speech expressiveness
+    - use_speaker_boost: Whether to enable speaker boost
     
-    配置来源：app.config.settings
-    - eleven_api_base: API 基础 URL
-    - eleven_api_key: API 密钥
+    Configuration source: app.config.settings
+    - eleven_api_base: API base URL
+    - eleven_api_key: API key
     """
     if not text or not text.strip():
         print("[tts] skip empty text")
@@ -62,8 +62,8 @@ async def _stream_elevenlabs(
     }
     payload = {
         "text": text,
-        "model_id": "eleven_turbo_v2_5",  # ⚡ Turbo 模型：更低延迟
-        "output_format": "mp3_44100_64",  # 🔧 64kbps：平衡音质和速度
+        "model_id": "eleven_turbo_v2_5",  # ⚡ Turbo model: lower latency
+        "output_format": "mp3_44100_64",  # 🔧 64kbps: balance quality and speed
         "voice_settings": {
             "stability": stability,
             "similarity_boost": similarity_boost,
@@ -83,12 +83,12 @@ async def _stream_elevenlabs(
 
 async def _synth_and_stream_common(conv_id: str, text: str, accent: str):
     voice_id = _pick_voice_id_by_accent(accent)
-    # 1) 通知前端开始
+    # 1) Notify frontend to start
     await channel.pub_tts_json(conv_id, {"type": "start", "mime": "audio/mpeg"})
     print(f"[tts→ws] start -> {conv_id}")
 
     try:
-        # 2) 流式分片（使用优化后的声音参数）
+        # 2) Stream chunks (using optimized voice parameters)
         got_any = False
         async for chunk in _stream_elevenlabs(
             text=text,
@@ -102,18 +102,18 @@ async def _synth_and_stream_common(conv_id: str, text: str, accent: str):
             await channel.pub_tts_bytes(conv_id, chunk)
         print(f"[tts] stream done, got_any={got_any}")
     finally:
-        # 3) 通知前端结束
+        # 3) Notify frontend to end
         await channel.pub_tts_json(conv_id, {"type": "stop"})
         print(f"[tts→ws] stop  -> {conv_id}")
 
 
-# ================================ MeloTTS 本地模型相关 =====================================
-# 全局模型实例（懒加载，避免重复加载模型）
-_melotts_model_cache = {}  # 按语言缓存: {'EN': model, 'ZH': model}
+# ================================ MeloTTS Local Model Related =====================================
+# Global model instance (lazy loading, avoid reloading models)
+_melotts_model_cache = {}  # Cache by language: {'EN': model, 'ZH': model}
 _melotts_executor = None
 
 def _get_melotts_executor():
-    """获取线程池执行器"""
+    """Get thread pool executor"""
     global _melotts_executor
     if _melotts_executor is None:
         from concurrent.futures import ThreadPoolExecutor
@@ -122,10 +122,10 @@ def _get_melotts_executor():
 
 def _get_melotts_model(language: str):
     """
-    获取或初始化 MeloTTS 模型（带缓存）
+    Get or initialize MeloTTS model (with caching)
     
     Args:
-        language: 语言代码 'EN' 或 'ZH'
+        language: Language code 'EN' or 'ZH'
     
     Returns:
         tuple: (model, speaker_ids)
@@ -133,126 +133,126 @@ def _get_melotts_model(language: str):
     import os
     import sys
     
-    # 检查缓存
+    # Check cache
     if language in _melotts_model_cache:
         model = _melotts_model_cache[language]
         speaker_ids = model.hps.data.spk2id
-        # 确保返回字典类型
+        # Ensure dictionary type
         if not isinstance(speaker_ids, dict):
             speaker_ids = dict(speaker_ids)
         return model, speaker_ids
     
-    # 设置离线模式（避免自动下载）
+    # Set offline mode (avoid auto-download)
     os.environ.setdefault('HF_HUB_OFFLINE', '1')
     os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
     
-    # 添加 MeloTTS 路径到 sys.path
+    # Add MeloTTS path to sys.path
     services_dir = os.path.dirname(os.path.abspath(__file__))
     melo_dir = os.path.join(services_dir, 'melo')
     
     if os.path.exists(melo_dir) and services_dir not in sys.path:
         sys.path.insert(0, services_dir)
     
-    # 导入 MeloTTS
+    # Import MeloTTS
     try:
         from melo.api import TTS
     except ImportError as e:
         raise ImportError(
-            f"无法导入 MeloTTS: {e}\n"
-            "请确保 melo/ 目录位于 app/services/melo/"
+            f"Failed to import MeloTTS: {e}\n"
+            "Please ensure melo/ directory is located at app/services/melo/"
         )
     
-    # 确定模型文件路径
+    # Determine model file path
     app_dir = os.path.dirname(services_dir)
     models_dir = os.path.join(app_dir, 'models', 'tts_models')
     lang_dir = os.path.join(models_dir, language)
     local_ckpt = os.path.join(lang_dir, 'checkpoint.pth')
     local_config = os.path.join(lang_dir, 'config.json')
     
-    # 设备选择（自动选择 GPU/CPU）
+    # Device selection (auto-select GPU/CPU)
     #device = 'auto'
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[melotts] The device used is: {device}")
     
-    # 加载模型
+    # Load model
     if os.path.exists(local_ckpt) and os.path.exists(local_config):
-        print(f"[melotts] 加载本地模型: {language}")
+        print(f"[melotts] Loading local model: {language}")
         print(f"  - checkpoint: {local_ckpt}")
         print(f"  - config: {local_config}")
         model = TTS(
             language=language,
             device=device,
-            use_hf=False,  # 使用本地文件
+            use_hf=False,  # Use local files
             config_path=local_config,
             ckpt_path=local_ckpt
         )
     else:
         raise FileNotFoundError(
-            f"找不到 {language} 模型文件:\n"
+            f"Model files not found for {language}:\n"
             f"  - {local_ckpt}\n"
             f"  - {local_config}\n"
-            f"请确保模型文件已复制到 app/models/tts_models/{language}/"
+            f"Please ensure model files are copied to app/models/tts_models/{language}/"
         )
     
-    # 缓存模型
+    # Cache model
     _melotts_model_cache[language] = model
     speaker_ids = model.hps.data.spk2id
     
-    # 确保返回字典类型
+    # Ensure dictionary type
     if not isinstance(speaker_ids, dict):
         speaker_ids = dict(speaker_ids)
     
-    print(f"[melotts] 模型加载成功: {language}, 可用说话者: {list(speaker_ids.keys())}")
+    print(f"[melotts] Model loaded successfully: {language}, available speakers: {list(speaker_ids.keys())}")
     return model, speaker_ids
 
 def _accent_to_speaker_id(accent: str, speaker_ids, language: str) -> int:
     """
-    将口音字符串映射到 speaker_id
+    Map accent string to speaker_id
     
     Args:
-        accent: 口音类型（如 "australia", "british", "india", "american"）
-        speaker_ids: 模型的 speaker_ids（可能是字典或 HParams 对象）
-        language: 语言代码
+        accent: Accent type (e.g., "australia", "british", "india", "american")
+        speaker_ids: Model's speaker_ids (may be dict or HParams object)
+        language: Language code
     
     Returns:
         int: speaker_id
     """
-    # 确保 speaker_ids 是字典
+    # Ensure speaker_ids is a dictionary
     if not isinstance(speaker_ids, dict):
         speaker_ids = dict(speaker_ids)
     
     a = (accent or "").lower()
     
     if language == 'ZH':
-        # 中文模型只有一个说话者
+        # Chinese model has only one speaker
         return speaker_ids.get('ZH', list(speaker_ids.values())[0])
     
-    # 英文模型有多个口音
-    # 注意：模型使用连字符 (EN-INDIA)，不是下划线 (EN_INDIA)
+    # English model has multiple accents
+    # Note: Model uses hyphens (EN-INDIA), not underscores (EN_INDIA)
     if "australia" in a or "au" in a:
         return speaker_ids.get('EN-AU', speaker_ids.get('EN-Default', list(speaker_ids.values())[0]))
     elif "british" in a or "br" in a or "uk" in a:
         return speaker_ids.get('EN-BR', speaker_ids.get('EN-Default', list(speaker_ids.values())[0]))
     elif "india" in a or "indian" in a:
-        # 修复：使用连字符 EN-INDIA 而不是下划线 EN_INDIA
+        # Fix: Use hyphen EN-INDIA instead of underscore EN_INDIA
         return speaker_ids.get('EN-INDIA', speaker_ids.get('EN-Default', list(speaker_ids.values())[0]))
     elif "american" in a or "us" in a:
         return speaker_ids.get('EN-US', speaker_ids.get('EN-Default', list(speaker_ids.values())[0]))
     else:
-        # 默认使用 EN-Default 或第一个可用的
+        # Default to EN-Default or first available
         return speaker_ids.get('EN-Default', list(speaker_ids.values())[0])
 
 async def _synth_and_stream_local(conv_id: str, text: str, accent: str):
     """
-    本地部署的 MeloTTS 模型版本
-    输入输出与 _synth_and_stream_common 完全相同
+    Locally deployed MeloTTS model version
+    Input/output identical to _synth_and_stream_common
     
     Args:
-        conv_id: 会话 ID
-        text: 要合成的文本
-        accent: 口音类型（australia/british/india/american/chinese）
+        conv_id: Conversation ID
+        text: Text to synthesize
+        accent: Accent type (australia/british/india/american/chinese)
     """
-    print(f"[DEBUG][melotts] ========== TTS 开始 ==========")
+    print(f"[DEBUG][melotts] ========== TTS Start ==========")
     print(f"[DEBUG][melotts] conv_id: {conv_id}")
     print(f"[DEBUG][melotts] text: '{text}'")
     print(f"[DEBUG][melotts] accent: {accent}")
@@ -261,76 +261,76 @@ async def _synth_and_stream_local(conv_id: str, text: str, accent: str):
     import io
     import numpy as np
     
-    # 检查空文本
+    # Check for empty text
     if not text or not text.strip():
-        print("[melotts] 跳过空文本")
+        print("[melotts] Skipping empty text")
         return
     
     try:
         import soundfile as sf
-        print("[DEBUG][melotts] soundfile 导入成功")
+        print("[DEBUG][melotts] soundfile imported successfully")
     except ImportError as e:
-        print(f"[DEBUG][melotts] soundfile 导入失败: {e}")
-        raise ImportError("需要安装 soundfile: pip install soundfile")
+        print(f"[DEBUG][melotts] soundfile import failed: {e}")
+        raise ImportError("Need to install soundfile: pip install soundfile")
     
-    # 根据口音确定语言模型
+    # Determine language model based on accent
     accent_lower = (accent or "").lower()
     if "chinese" in accent_lower or "china" in accent_lower:
         language = 'ZH'
     else:
-        language = 'EN'  # 美式、英式、澳洲、印度都使用 EN 模型
+        language = 'EN'  # American, British, Australian, Indian all use EN model
     
-    print(f"[DEBUG][melotts] 选择语言模型: {language}")
+    print(f"[DEBUG][melotts] Selected language model: {language}")
     
-    # 1) 通知前端开始
-    print(f"[DEBUG][melotts] 准备发送 start 消息到 channel")
+    # 1) Notify frontend to start
+    print(f"[DEBUG][melotts] Preparing to send start message to channel")
     await channel.pub_tts_json(conv_id, {"type": "start", "mime": "audio/mpeg"})
-    print(f"[DEBUG][melotts→ws] start 消息已发送 -> {conv_id}")
+    print(f"[DEBUG][melotts→ws] start message sent -> {conv_id}")
     
     try:
-        # 2) 获取模型（使用缓存）
-        print(f"[DEBUG][melotts] 开始加载模型...")
+        # 2) Get model (use cache)
+        print(f"[DEBUG][melotts] Starting to load model...")
         model, speaker_ids = _get_melotts_model(language)
-        print(f"[DEBUG][melotts] 模型加载成功，speaker_ids: {speaker_ids}")
+        print(f"[DEBUG][melotts] Model loaded successfully, speaker_ids: {speaker_ids}")
         
         speaker_id = _accent_to_speaker_id(accent, speaker_ids, language)
-        print(f"[DEBUG][melotts] 选择的 speaker_id: {speaker_id}")
+        print(f"[DEBUG][melotts] Selected speaker_id: {speaker_id}")
         
-        print(f"[melotts] 合成语音: text='{text[:50]}...', accent={accent}, speaker_id={speaker_id}, language={language}")
+        print(f"[melotts] Synthesizing speech: text='{text[:50]}...', accent={accent}, speaker_id={speaker_id}, language={language}")
         
-        # 3) 在线程池中生成音频（避免阻塞事件循环）
-        print(f"[DEBUG][melotts] 准备在线程池中合成音频...")
+        # 3) Generate audio in thread pool (avoid blocking event loop)
+        print(f"[DEBUG][melotts] Preparing to synthesize audio in thread pool...")
         executor = _get_melotts_executor()
         loop = asyncio.get_event_loop()
         
         def synthesize():
-            """在线程池中执行的同步合成函数"""
-            print(f"[DEBUG][melotts] 线程池：开始调用 model.tts_to_file")
+            """Synchronous synthesis function executed in thread pool"""
+            print(f"[DEBUG][melotts] Thread pool: Starting to call model.tts_to_file")
             audio = model.tts_to_file(
                 text=text,
                 speaker_id=speaker_id,
-                output_path=None,  # 返回 numpy 数组而不是保存文件
+                output_path=None,  # Return numpy array instead of saving file
                 speed=1.0,
-                quiet=True  # 不显示进度条
+                quiet=True  # Don't show progress bar
             )
             sample_rate = model.hps.data.sampling_rate
-            print(f"[DEBUG][melotts] 线程池：音频合成完成，sample_rate={sample_rate}")
+            print(f"[DEBUG][melotts] Thread pool: Audio synthesis complete, sample_rate={sample_rate}")
             return audio, sample_rate
         
         audio, sample_rate = await loop.run_in_executor(executor, synthesize)
-        print(f"[DEBUG][melotts] 音频数据接收完成，shape={audio.shape if hasattr(audio, 'shape') else 'N/A'}")
+        print(f"[DEBUG][melotts] Audio data received, shape={audio.shape if hasattr(audio, 'shape') else 'N/A'}")
         
-        # 4) 转换为 MP3 字节（使用 pydub + ffmpeg）
-        print(f"[DEBUG][melotts] 开始转换为 MP3 字节...")
+        # 4) Convert to MP3 bytes (using pydub + ffmpeg)
+        print(f"[DEBUG][melotts] Starting to convert to MP3 bytes...")
         audio = np.clip(audio, -1.0, 1.0)
         
         try:
             from pydub import AudioSegment
             
-            # 转换为 16-bit PCM
+            # Convert to 16-bit PCM
             audio_int16 = (audio * 32767.0).astype(np.int16)
             
-            # 创建 AudioSegment
+            # Create AudioSegment
             audio_segment = AudioSegment(
                 audio_int16.tobytes(),
                 frame_rate=sample_rate,
@@ -338,54 +338,54 @@ async def _synth_and_stream_local(conv_id: str, text: str, accent: str):
                 channels=1
             )
             
-            # 导出为 MP3
+            # Export as MP3
             mp3_buffer = io.BytesIO()
             audio_segment.export(mp3_buffer, format="mp3", bitrate="128k")
             mp3_buffer.seek(0)
             audio_bytes = mp3_buffer.read()
-            print(f"[DEBUG][melotts] MP3 转换完成，总大小: {len(audio_bytes)} bytes")
+            print(f"[DEBUG][melotts] MP3 conversion complete, total size: {len(audio_bytes)} bytes")
         except ImportError:
-            # 如果 pydub 不可用，退化到 WAV
-            print(f"[DEBUG][melotts] pydub 不可用，退化到 WAV 格式...")
+            # If pydub unavailable, fallback to WAV
+            print(f"[DEBUG][melotts] pydub unavailable, falling back to WAV format...")
             audio = audio.astype(np.float32)
             wav_buffer = io.BytesIO()
             sf.write(wav_buffer, audio, sample_rate, format='WAV', subtype='PCM_16')
             wav_buffer.seek(0)
             audio_bytes = wav_buffer.read()
-            print(f"[DEBUG][melotts] WAV 转换完成，总大小: {len(audio_bytes)} bytes")
+            print(f"[DEBUG][melotts] WAV conversion complete, total size: {len(audio_bytes)} bytes")
         
-        # 5) 分块发送音频数据
+        # 5) Send audio data in chunks
         chunk_size = 8192
         got_any = False
         chunk_count = 0
         
-        print(f"[DEBUG][melotts] 开始分块发送音频数据，chunk_size={chunk_size}")
+        print(f"[DEBUG][melotts] Starting to send audio data in chunks, chunk_size={chunk_size}")
         for offset in range(0, len(audio_bytes), chunk_size):
             chunk = audio_bytes[offset:offset + chunk_size]
             if chunk:
                 got_any = True
                 chunk_count += 1
                 await channel.pub_tts_bytes(conv_id, chunk)
-                if chunk_count <= 3 or chunk_count % 10 == 0:  # 只打印前几个和每10个
-                    print(f"[DEBUG][melotts] 已发送 chunk #{chunk_count}, size={len(chunk)}")
-            await asyncio.sleep(0)  # 让出控制权
+                if chunk_count <= 3 or chunk_count % 10 == 0:  # Only print first few and every 10th
+                    print(f"[DEBUG][melotts] Sent chunk #{chunk_count}, size={len(chunk)}")
+            await asyncio.sleep(0)  # Yield control
         
-        print(f"[DEBUG][melotts] 音频数据发送完成！")
+        print(f"[DEBUG][melotts] Audio data sending complete!")
         print(f"[melotts] stream done, got_any={got_any}, total_chunks={chunk_count}, total_size={len(audio_bytes)} bytes")
         
     except Exception as e:
-        print(f"[DEBUG][melotts] ❌ 发生错误: {e}")
-        print(f"[DEBUG][melotts] 错误类型: {type(e).__name__}")
+        print(f"[DEBUG][melotts] ❌ Error occurred: {e}")
+        print(f"[DEBUG][melotts] Error type: {type(e).__name__}")
         import traceback
-        print(f"[DEBUG][melotts] 完整堆栈跟踪:")
+        print(f"[DEBUG][melotts] Full stack trace:")
         traceback.print_exc()
         raise
     finally:
-        # 6) 通知前端结束
-        print(f"[DEBUG][melotts] 准备发送 stop 消息")
+        # 6) Notify frontend to end
+        print(f"[DEBUG][melotts] Preparing to send stop message")
         await channel.pub_tts_json(conv_id, {"type": "stop"})
-        print(f"[DEBUG][melotts→ws] stop 消息已发送 -> {conv_id}")
-        print(f"[DEBUG][melotts] ========== TTS 结束 ==========")
+        print(f"[DEBUG][melotts→ws] stop message sent -> {conv_id}")
+        print(f"[DEBUG][melotts] ========== TTS End ==========")
 
 # =====================================================================
 

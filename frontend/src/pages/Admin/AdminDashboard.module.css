@@ -7,7 +7,7 @@
   background-color: #f5f7fa;
 }
 
-/* 顶部导航栏 */
+/* Top navigation bar */
 .header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
@@ -66,7 +66,7 @@
   background-color: rgba(255, 255, 255, 0.3);
 }
 
-/* 标签页切换 */
+/* Tab navigation */
 .tabs {
   background: #fff;
   padding: 0 32px;
@@ -108,14 +108,14 @@
   height: 20px;
 }
 
-/* 主内容区 */
+/* Main content area */
 .main {
   flex: 1;
   padding: 0;
   overflow-y: auto;
 }
 
-/* 底部标识 */
+/* Bottom footer */
 .footer {
   padding: 12px 0;
   text-align: center;
@@ -125,7 +125,7 @@
   font-size: 12px;
 }
 
-/* 响应式设计 */
+/* Responsive design */
 @media (max-width: 768px) {
   .header {
     flex-direction: column;

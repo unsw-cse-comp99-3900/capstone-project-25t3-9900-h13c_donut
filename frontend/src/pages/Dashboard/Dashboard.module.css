@@ -3,9 +3,9 @@
   display: flex;
   height: 100vh;
   width: 100%;
-  background: #eef1f6; /* 再次兜底，防止父级背景透上来 */
+  background: #eef1f6; /* Fallback again to prevent parent background from showing through */
   position: relative;
-  z-index: 0;          /* 明确层级，避免被无意的全屏遮罩遮住 */
+  z-index: 0;          /* Explicit layer to avoid being covered by unintended full-screen overlay */
 }
 
 /* ============ Sidebar ============ */
@@ -17,7 +17,7 @@
   padding: 12px 12px;
 }
 
-/* 顶部齿轮 + Hi, 用户名（与 Conversations 左对齐） */
+/* Top gear + Hi, username (left-aligned with Conversations) */
 .sidebarTop {
   height: 38px;
   display: flex;
@@ -125,7 +125,7 @@
   font-size: 14px;
 }
 
-/* 三点按钮 + 菜单 */
+/* Three-dot button + menu */
 .dotBtn {
   opacity: 0;
   transition: opacity .15s ease;
@@ -212,7 +212,7 @@
   border-left: 3px solid transparent;
   transition: border-color 0.2s;
 }
-/* ✅ 根据说话人添加边框颜色 */
+/* ✅ Add border color based on speaker */
 .segment[data-speaker="SPEAKER_00"] { border-left-color: #FF6B6B; }
 .segment[data-speaker="SPEAKER_01"] { border-left-color: #4ECDC4; }
 .segment[data-speaker="SPEAKER_02"] { border-left-color: #FFD93D; }
@@ -226,7 +226,7 @@
   font-size: 13px;
   flex-wrap: wrap;
 }
-/* ✅ 说话人标签样式 */
+/* ✅ Speaker tag styles */
 .speakerTag {
   display: inline-block;
   padding: 3px 10px;
@@ -241,7 +241,7 @@
 .segmentText { color: #222; }
 .segmentLive .segmentMeta { color: #0a0; }
 
-/* ✅ Web Speech API 预览文本样式 */
+/* ✅ Web Speech API preview text styles */
 .previewText {
   color: #888;
   font-style: italic;
@@ -264,7 +264,7 @@
 /* bottom left: Accent */
 .accentBox {
   position: absolute;
-  bottom: 20px;  /* 恢复原来的位置 */
+  bottom: 20px;  /* Restore original position */
   left: 24px;
   display: flex;
   align-items: center;
@@ -272,7 +272,7 @@
 }
 .accentLabel { font-size: 14px; color: #333; }
 
-/* 正圆按钮（麦克风/喇叭） */
+/* Circular buttons (microphone/speaker) */
 .centerControls {
   position: absolute;
   bottom: 18px;
@@ -320,7 +320,7 @@
 }
 .micActive { animation: rainbowPulse 1.6s ease-out infinite; }
 
-/* ===== 遮罩 ===== */
+/* ===== Overlay ===== */
 .backdrop {
   display: grid;
   position: fixed;
@@ -375,7 +375,7 @@
 .eyeBtn:active { color: #555; }
 .eyeBtn svg { width: 20px; height: 20px; display: block; }
 
-/* 让喇叭按钮获得焦点时也不出现默认描边，避免看起来“动了一下” */
+/* Prevent default outline on speaker button when focused to avoid visual "jump" */
 .iconBtn {
   outline: none;
 }
@@ -383,19 +383,19 @@
   outline: none;
 }
 
-/* 音量弹层定位在喇叭按钮正上方，不占据布局空间 */
+/* Volume popover positioned directly above speaker button, doesn't occupy layout space */
 .volumeWrap {
-  position: relative;            /* 作为定位参照 */
+  position: relative;            /* As positioning reference */
 }
 
 .volumePopover {
   position: absolute;
-  bottom: 78px;                  /* 距离喇叭按钮的高度，可按需微调 */
+  bottom: 78px;                  /* Distance from speaker button height, can be fine-tuned as needed */
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
 
-  /* 视觉样式（你可以按喜好微调） */
+  /* Visual styles (can be fine-tuned as preferred) */
   background: #fff;
   border: 1px solid #d0d0d0;
   border-radius: 10px;
@@ -403,9 +403,9 @@
   box-shadow: 0 10px 30px rgba(0,0,0,0.14);
 }
 
-/* 滑条宽度与对齐 */
+/* Slider width and alignment */
 .volumePopover input[type="range"] {
   width: 180px;
-  margin: 0;                     /* 避免出现上下多余空白导致视觉跳动 */
+  margin: 0;                     /* Avoid extra top/bottom whitespace causing visual jump */
   display: block;
 }

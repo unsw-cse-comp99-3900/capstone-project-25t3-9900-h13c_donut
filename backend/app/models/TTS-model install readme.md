@@ -1,8 +1,8 @@
-## 使用方法：
-由于github文件上传限制，tts_models将上传至onedrive/sprint2文件夹：
+## Usage:
+Due to GitHub file upload limitations, tts_models will be uploaded to onedrive/sprint2 folder:
 
-将tts_models解压至backend/app/models/
-具体文件夹结构如下所示：
+Extract tts_models to backend/app/models/
+The specific folder structure is as follows:
 
 backend/app/models/
 ├── __init__.py

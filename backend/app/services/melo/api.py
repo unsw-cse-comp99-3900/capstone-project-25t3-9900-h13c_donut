@@ -29,16 +29,16 @@ class TTS(nn.Module):
             device = 'cpu'
             if torch.cuda.is_available(): 
                 device = 'cuda'
-                print(f"[MeloTTS] 🚀 GPU加速已启用: CUDA设备可用")
+                print(f"[MeloTTS] 🚀 GPU acceleration enabled: CUDA device available")
             elif torch.backends.mps.is_available(): 
                 device = 'mps'
-                print(f"[MeloTTS] 🚀 GPU加速已启用: MPS设备可用 (Apple Silicon)")
+                print(f"[MeloTTS] 🚀 GPU acceleration enabled: MPS device available (Apple Silicon)")
             else:
-                print(f"[MeloTTS] ⚠️  使用CPU模式 (GPU不可用)")
+                print(f"[MeloTTS] ⚠️  Using CPU mode (GPU unavailable)")
         if 'cuda' in device:
             assert torch.cuda.is_available()
             if torch.cuda.is_available():
-                print(f"[MeloTTS] 📊 CUDA设备信息: {torch.cuda.get_device_name(0)}")
+                print(f"[MeloTTS] 📊 CUDA device info: {torch.cuda.get_device_name(0)}")
 
         # config_path = 
         hps = load_or_download_config(language, use_hf=use_hf, config_path=config_path)
@@ -70,7 +70,7 @@ class TTS(nn.Module):
         language = language.split('_')[0]
         self.language = 'ZH_MIX_EN' if language == 'ZH' else language # we support a ZH_MIX_EN model
         
-        print(f"[MeloTTS] ✅ 模型已加载到设备: {device}")
+        print(f"[MeloTTS] ✅ Model loaded to device: {device}")
 
     @staticmethod
     def audio_numpy_concat(segment_data_list, sr, speed=1.):

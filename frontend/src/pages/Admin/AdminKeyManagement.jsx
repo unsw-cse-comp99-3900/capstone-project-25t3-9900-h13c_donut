@@ -34,16 +34,16 @@ export default function AdminKeyManagement() {
 
   // ====== helper: render masked preview for list table ======
   const renderKeyPreview = (item) => {
-    // 1) 后端如果直接给了 preview / keyPreview（推荐）
+    // 1) If backend directly provides preview / keyPreview (recommended)
     if (item.preview) return item.preview;
     if (item.keyPreview) return item.keyPreview;
 
-    // 2) 后端如果给了前缀 + 后四位
+    // 2) If backend provides prefix + last 4 characters
     if (item.keyPrefix && item.keySuffixLast4) {
       return `${item.keyPrefix}-****-****-${item.keySuffixLast4}`;
     }
 
-    // 3) 后备方案：沿用原来的 id 前几位，保证页面不崩
+    // 3) Fallback: use first few characters of id to prevent page crash
     if (item.id) {
       return `${item.id.slice(0, 16)}...`;
     }
@@ -147,7 +147,7 @@ export default function AdminKeyManagement() {
     if (result.ok) {
       setDetailMsgType('success');
       setDetailMsg('License key deleted successfully.');
-      // 重新加载当前页，保持筛选条件
+      // Reload current page, keep filter conditions
       loadKeys(currentPage, statusFilter);
     } else {
       setDetailMsgType('error');

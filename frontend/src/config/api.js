@@ -41,7 +41,7 @@ export async function apiRequest(
 
   const fetchOptions = {
     method,
-    credentials: "include", // 必须：让浏览器自动带 HttpOnly Cookie
+    credentials: "include", // Required: Let browser automatically include HttpOnly Cookie
     headers: {
       ...headers,
     },
@@ -59,39 +59,39 @@ export async function apiRequest(
     try {
       data = await res.json();
     } catch {
-      // 可能是纯文本 / 204，忽略 JSON 解析错误
+      // Could be plain text / 204, ignore JSON parsing error
     }
 
-    // =============== 🔥 统一抽取错误码 / 详情 ============
+    // =============== 🔥 Unified error code / detail extraction ============
     const detail = data?.detail;
     const errorCode =
       data?.error?.code ||
       (typeof detail === "object" ? detail?.code : undefined) ||
       data?.code;
 
-    // =============== 🔥 处理未登录：AUTH_REQUIRED ============
+    // =============== 🔥 Handle unauthenticated: AUTH_REQUIRED ============
     const isAuthRequired =
       res.status === 401 &&
       (
-        detail === "AUTH_REQUIRED" ||              // 后端直接 detail = "AUTH_REQUIRED"
-        errorCode === "AUTH_REQUIRED"             // 或 detail/code/error.code = "AUTH_REQUIRED"
+        detail === "AUTH_REQUIRED" ||              // Backend directly sets detail = "AUTH_REQUIRED"
+        errorCode === "AUTH_REQUIRED"             // or detail/code/error.code = "AUTH_REQUIRED"
       );
 
     if (isAuthRequired) {
       console.warn("[api] AUTH_REQUIRED → redirect to /login");
 
-      // 清除前端登录状态
+      // Clear frontend login state
       localStorage.removeItem("authUserId");
       localStorage.removeItem("authUsername");
       localStorage.removeItem("authUserRole");
 
-      // 强制跳转登录页
+      // Force redirect to login page
       window.location.href = "/login";
 
       return { ok: false, message: "AUTH_REQUIRED", code: "AUTH_REQUIRED" };
     }
 
-    // =============== 🔥 处理无权限：admin only ============
+    // =============== 🔥 Handle unauthorized: admin only ============
     const isAdminOnly =
       res.status === 403 &&
       (
@@ -105,7 +105,7 @@ export async function apiRequest(
       return { ok: false, message: "ADMIN_ONLY", code: "ADMIN_ONLY" };
     }
 
-    // =============== 一般错误处理 ==========================
+    // =============== General error handling ==========================
     if (!res.ok || (data && data.success === false)) {
       const msg =
         data?.error?.message ||
@@ -119,7 +119,7 @@ export async function apiRequest(
       };
     }
 
-    // =============== 正常成功返回 ==========================
+    // =============== Normal success return ==========================
     return { ok: true, data: data?.data ?? data };
   } catch (error) {
     return {

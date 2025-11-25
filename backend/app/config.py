@@ -3,7 +3,7 @@ import os
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-load_dotenv()  # 加载 .env 文件中的环境变量
+load_dotenv()  # Load environment variables from .env file
 
 class Settings(BaseModel):
     # General app settings
@@ -27,17 +27,12 @@ class Settings(BaseModel):
     whisper_api_url: str = os.getenv("WHISPER_API_URL", "https://api.openai.com/v1/audio/transcriptions")
     whisper_model: str = os.getenv("WHISPER_MODEL", "whisper-1")
     
-    # Local Whisper Settings
-    # ⚠️ 由于本地 Whisper 存在死锁和堵塞问题，默认关闭，改用前端 Web Speech API 预览
-    use_local_whisper: bool = os.getenv("USE_LOCAL_WHISPER", "false").lower() in ("true", "1", "yes")
-    local_whisper_model: str = os.getenv("LOCAL_WHISPER_MODEL", "small")  # tiny, base, small, medium, large
-    
     # Diarization Settings
-    # ⚠️ 说话人识别准确度不理想，默认关闭（代码保留，可随时启用）
+    # ⚠️ Speaker recognition accuracy is not ideal, disabled by default (code retained, can be enabled anytime)
     enable_diarization: bool = os.getenv("ENABLE_DIARIZATION", "false").lower() in ("true", "1", "yes")
     
     # GPT Post-Processing Settings
-    # ✅ 使用 GPT 整理和分句（推荐）
+    # ✅ Use GPT for formatting and sentence segmentation (recommended)
     enable_gpt_formatting: bool = os.getenv("ENABLE_GPT_FORMATTING", "true").lower() in ("true", "1", "yes")
     gpt_model: str = os.getenv("GPT_MODEL", "gpt-4o-mini")  # gpt-3.5-turbo, gpt-4, gpt-4o-mini
     
@@ -47,11 +42,11 @@ class Settings(BaseModel):
     default_voice_id: str = os.getenv("DEFAULT_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
     
     # Voice Mapping for accents
-    # ✅ .env 中未设置时使用默认 Voice ID（ElevenLabs 预置声音）
+    # ✅ Use default Voice ID when not set in .env (ElevenLabs preset voices)
     voice_id_american: str = os.getenv("VOICE_ID_AMERICAN", "EXAVITQu4vr4xnSDxMaL")
     voice_id_australia: str = os.getenv("VOICE_ID_AUSTRALIA", "IKne3meq5aSn9XLyUdCD")
     voice_id_british: str = os.getenv("VOICE_ID_BRITISH", "JBFqnCBsd6RMkjVDRZzb")
     voice_id_chinese: str = os.getenv("VOICE_ID_CHINESE", "hkfHEbBvdQFNX4uWHqRF")
     voice_id_india: str = os.getenv("VOICE_ID_INDIA", "kL06KYMvPY56NluIQ72m")
 
-settings = Settings()  # 实例化配置
+settings = Settings()  # Instantiate configuration

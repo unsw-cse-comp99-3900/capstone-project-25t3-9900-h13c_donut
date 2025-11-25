@@ -4,8 +4,8 @@ import httpx
 from ..config import settings
 
 def webm_to_wav_16k_mono(webm_path: str) -> str:
-    """把 webm/opus 转 16k 单声道 wav，返回 wav 路径（调用方负责删除）"""
-    # 验证输入文件
+    """Convert webm/opus to 16k mono wav, return wav path (caller responsible for deletion)"""
+    # Validate input file
     if not os.path.exists(webm_path):
         raise FileNotFoundError(f"Input file not found: {webm_path}")
     
@@ -20,25 +20,25 @@ def webm_to_wav_16k_mono(webm_path: str) -> str:
             (
                 ffmpeg
                 .input(webm_path)
-                # ❌ 移除音频滤波（可能引入失真，影响 Whisper 识别）
+                # ❌ Removed audio filtering (may introduce distortion, affecting Whisper recognition)
                 .output(
                     wav_file.name, 
-                    ac=1,           # 单声道
-                    ar="16000",     # 16kHz 采样率（Whisper 推荐）
+                    ac=1,           # Mono
+                    ar="16000",     # 16kHz sample rate (Whisper recommended)
                     format="wav",
-                    acodec="pcm_s16le",  # 16位 PCM（无损）
-                    loglevel="error"     # 只显示错误
+                    acodec="pcm_s16le",  # 16-bit PCM (lossless)
+                    loglevel="error"     # Only show errors
                 )
                 .overwrite_output()
                 .run(capture_stdout=True, capture_stderr=True)
             )
             
-            # ✅ 验证转换后的 WAV 文件
+            # ✅ Validate converted WAV file
             wav_size = os.path.getsize(wav_file.name)
             if wav_size == 0:
                 raise ValueError(f"Converted WAV file is empty: {wav_file.name}")
             
-            # 检查 WAV 文件头（应该是 "RIFF"）
+            # Check WAV file header (should be "RIFF")
             with open(wav_file.name, "rb") as f:
                 wav_header = f.read(4)
                 if wav_header != b'RIFF':
@@ -47,11 +47,11 @@ def webm_to_wav_16k_mono(webm_path: str) -> str:
             print(f"[ffmpeg] Conversion successful: {wav_file.name} ({wav_size} bytes)")
             return wav_file.name
         except ffmpeg.Error as e:
-            # 打印详细错误信息
+            # Print detailed error information
             print(f"[ffmpeg] ERROR converting {webm_path}:")
             print(f"[ffmpeg] stdout: {e.stdout.decode('utf-8', errors='ignore') if e.stdout else 'N/A'}")
             print(f"[ffmpeg] stderr: {e.stderr.decode('utf-8', errors='ignore') if e.stderr else 'N/A'}")
-            # 清理失败的输出文件
+            # Clean up failed output file
             if os.path.exists(wav_file.name):
                 try:
                     os.unlink(wav_file.name)
@@ -61,12 +61,12 @@ def webm_to_wav_16k_mono(webm_path: str) -> str:
 
 async def transcribe_wav_via_url(wav_path: str) -> str:
     """
-    通过 HTTP 直连 WHISPER_API_URL 调 ASR：
+    Call ASR via HTTP direct connection to WHISPER_API_URL:
       POST multipart/form-data:
         - model=settings.whisper_model
         - file=@wav (audio/wav)
         - response_format=verbose_json
-      头：Authorization: Bearer OPENAI_API_KEY
+      Header: Authorization: Bearer OPENAI_API_KEY
     """
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY not set")

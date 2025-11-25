@@ -1,5 +1,5 @@
 // src/api/auth.js
-// 使用统一的 API 配置
+// Uses unified API configuration
 import { apiRequest } from '../config/api.js';
 
 /**
@@ -13,9 +13,9 @@ export async function login({ username, password }) {
 }
 
 export async function logout() {
-  // 调用后端 /auth/logout，删除 Cookie
+  // Call backend /auth/logout, delete Cookie
   const r = await apiRequest("/auth/logout", { method: "POST" });
-  return r;  // 这里即便失败也无所谓，前端照样清状态
+  return r;  // Even if it fails, frontend will still clear state
 }
 
 /**

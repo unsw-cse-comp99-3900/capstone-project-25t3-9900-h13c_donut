@@ -4,3 +4,38 @@ dist/
 .env.local
 .DS_Store
 Thumbs.db
+
+# Testing & Coverage Reports
+# Backend test coverage
+backend/htmlcov/
+backend/.pytest_cache/
+backend/.coverage
+backend/*.coverage
+backend/coverage.xml
+backend/coverage.json
+backend/.coverage.*
+backend/.cache/
+
+# Backend test code
+backend/tests/
+
+# Frontend test coverage
+frontend/coverage/
+frontend/.vitest/
+frontend/.vite/
+
+# Frontend test code
+frontend/src/**/__tests__/
+frontend/src/test/
+frontend/TESTING.md
+
+# Test artifacts
+*.log
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+*.cover
+.hypothesis/
+.tox/

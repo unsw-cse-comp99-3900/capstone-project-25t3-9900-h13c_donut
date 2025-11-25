@@ -1,7 +1,7 @@
 """
-OpenAI Whisper API 适配器
+OpenAI Whisper API Adapter
 
-适配现有的 OpenAI Whisper API 调用到新的 ASR 接口
+Adapts existing OpenAI Whisper API calls to the new ASR interface
 """
 import httpx
 from typing import Optional
@@ -10,7 +10,7 @@ from ..config import settings
 
 
 class OpenAIWhisperService(ASRService):
-    """OpenAI Whisper API 服务"""
+    """OpenAI Whisper API Service"""
     
     def __init__(self):
         self.api_key = settings.openai_api_key
@@ -22,7 +22,7 @@ class OpenAIWhisperService(ASRService):
         return "OpenAI Whisper API"
     
     def is_available(self) -> bool:
-        """检查 API key 是否配置"""
+        """Check if API key is configured"""
         return bool(self.api_key)
     
     async def transcribe(
@@ -32,35 +32,35 @@ class OpenAIWhisperService(ASRService):
         word_timestamps: bool = False
     ) -> TranscriptionResult:
         """
-        调用 OpenAI Whisper API 进行转录
+        Call OpenAI Whisper API for transcription
         
-        使用 verbose_json 格式，返回 segment 级别时间戳
+        Uses verbose_json format, returns segment-level timestamps
         
-        注意：不使用 timestamp_granularities 参数，因为它会导致 segments 被合并，
-        影响与 diarization 的匹配准确度
+        Note: Does not use timestamp_granularities parameter, as it causes segments to be merged,
+        affecting matching accuracy with diarization
         """
         if not self.is_available():
             raise RuntimeError(f"{self.name}: API key not configured")
         
         headers = {"Authorization": f"Bearer {self.api_key}"}
         
-        # 构建请求参数（✅ 优化准确度）
+        # Build request parameters (✅ Optimize accuracy)
         data = {
             "model": self.model,
             "response_format": "verbose_json",
-            # ✅ 高精度参数
-            "temperature": 0.0,  # 0 = 最确定性（最准确，无随机性）
-            "prompt": "Hello, hi, hey, good morning, how are you, I'm fine, thank you, and you, see you, bye.",  # ✅ 常见对话短语示例，帮助 Whisper 理解上下文
+            # ✅ High precision parameters
+            "temperature": 0.0,  # 0 = most deterministic (most accurate, no randomness)
+            "prompt": "Hello, hi, hey, good morning, how are you, I'm fine, thank you, and you, see you, bye.",  # ✅ Common conversation phrase examples to help Whisper understand context
         }
         
         if language:
             data["language"] = language
         
-        # ❌ 不使用 timestamp_granularities，因为它会合并 segments，导致与 diarization 匹配失败
+        # ❌ Do not use timestamp_granularities, as it merges segments, causing diarization matching to fail
         # if word_timestamps:
         #     data["timestamp_granularities"] = ["word", "segment"]
         
-        # 发送请求
+        # Send request
         async with httpx.AsyncClient(timeout=120) as client:
             with open(audio_path, "rb") as f:
                 files = {"file": ("audio.wav", f, "audio/wav")}
@@ -68,17 +68,17 @@ class OpenAIWhisperService(ASRService):
             resp.raise_for_status()
             result = resp.json()
         
-        # 解析结果
+        # Parse result
         full_text = (result.get("text") or "").strip()
         language_detected = result.get("language")
         duration = result.get("duration")
         
-        # 解析分段信息
+        # Parse segment information
         segments = []
         raw_segments = result.get("segments", [])
         
         if not raw_segments and full_text:
-            # 如果没有分段信息，创建一个单一分段
+            # If no segment information, create a single segment
             segments.append(TranscriptSegment(
                 text=full_text,
                 start_sec=0.0,
@@ -91,7 +91,7 @@ class OpenAIWhisperService(ASRService):
                 seg_start = seg.get("start", 0.0)
                 seg_end = seg.get("end", 0.0)
                 
-                # 解析词级别时间戳（如果有）
+                # Parse word-level timestamps (if available)
                 words = None
                 if word_timestamps and "words" in seg:
                     words = [
@@ -118,7 +118,7 @@ class OpenAIWhisperService(ASRService):
         )
 
 
-# 全局单例（可选）
+# Global singleton (optional)
 openai_whisper_service = OpenAIWhisperService()
 
 

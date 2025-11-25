@@ -37,29 +37,44 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 # ------------------------------------------------------------------------------
-# 辅助：可选的当前用户（用于 /admin/verify-key 在 consume=True 时记录兑换者）
+# Helper: optional current user (for /admin/verify-key when consume=True to record redeemer)
 # ------------------------------------------------------------------------------
 async def optional_current_user_dependency():
     """
-    尝试获取当前登录用户；失败则返回 None（而不是抛 401）。
-    用于 /admin/verify-key 在 consume=True 时记录 used_by。
+    Try to get current logged-in user; if failed return None (instead of throwing 401).
+    Used for /admin/verify-key when consume=True to record used_by.
     """
     try:
-        user = await get_current_user()  # 会尝试从 Authorization/Cookie 取 token
+        user = await get_current_user()  # Will try to get token from Authorization/Cookie
         return user
     except Exception:
         return None
 
 
 def utc_now() -> dt.datetime:
+    """
+    Get current UTC datetime with timezone information.
+    
+    Returns:
+        dt.datetime: Current UTC datetime with timezone awareness
+    """
     return dt.datetime.now(dt.timezone.utc)
 
 
 # ==============================================================================
-# 一、用户管理接口
-#     前缀：/api/v1/admin/users
+# I. User Management Interface
+#     Prefix: /api/v1/admin/users
 # ==============================================================================
 def _user_to_dict(u: User) -> dict:
+    """
+    Convert User model instance to dictionary format for API responses.
+    
+    Args:
+        u: User model instance
+    
+    Returns:
+        dict: Dictionary containing user fields formatted for API response
+    """
     return {
         "id": str(u.id),
         "username": u.username,
@@ -70,6 +85,15 @@ def _user_to_dict(u: User) -> dict:
 
 
 async def _count_admins() -> int:
+    """
+    Count the total number of admin users in the system.
+    
+    Returns:
+        int: Number of users with role="admin"
+    
+    Note:
+        Used to prevent demoting or deleting the last admin user.
+    """
     return await User.filter(role="admin").count()
 
 
@@ -79,10 +103,28 @@ async def _count_admins() -> int:
     dependencies=[Depends(require_admin)],
 )
 async def list_users(
-    q: str | None = Query(default=None, description="按 username/email 模糊搜索"),
+    q: str | None = Query(default=None, description="Fuzzy search by username/email"),
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ):
+    """
+    Get paginated list of all users (admin only).
+    
+    Returns a list of all users in the system with optional search filtering.
+    Results are ordered by creation date (newest first).
+    
+    Args:
+        q: Optional search query for fuzzy matching username or email
+        offset: Number of items to skip (for pagination)
+        limit: Maximum number of items to return (1-100)
+    
+    Returns:
+        AdminUserListOut: Response containing paginated user list
+    
+    Raises:
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     qs = User.all().order_by("-created_at")
     if q:
         qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q))
@@ -100,6 +142,20 @@ async def list_users(
     dependencies=[Depends(require_admin)],
 )
 async def get_user_detail(user_id: str):
+    """
+    Get detailed information about a specific user (admin only).
+    
+    Args:
+        user_id: User UUID string
+    
+    Returns:
+        AdminUserDetailOut: Response containing user details
+    
+    Raises:
+        HTTPException (404): If user not found
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     u = await User.get_or_none(id=user_id)
     if not u:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="USER_NOT_FOUND")
@@ -116,11 +172,32 @@ async def update_user(
     body: AdminUserUpdateIn,
     current_admin: User = Depends(get_current_user),
 ):
+    """
+    Update user information (admin only).
+    
+    Allows admins to update a user's username, email, or role. All fields
+    are optional - only provided fields will be updated. Includes validation
+    to prevent security issues (e.g., demoting last admin, demoting self).
+    
+    Args:
+        user_id: User UUID string to update
+        body: Request body with optional fields to update
+        current_admin: Current admin user (from dependency)
+    
+    Returns:
+        AdminUserDetailOut: Response containing updated user details
+    
+    Raises:
+        HTTPException (404): If user not found
+        HTTPException (400): If validation fails (username/email exists, cannot demote self, etc.)
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     u = await User.get_or_none(id=user_id)
     if not u:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="USER_NOT_FOUND")
 
-    # 1) 用户名更新（唯一性检查）
+    # 1) Update username (uniqueness check)
     if body.username and body.username != u.username:
         exists = await User.filter(username=body.username).exclude(id=user_id).exists()
         if exists:
@@ -130,7 +207,7 @@ async def update_user(
             )
         u.username = body.username
 
-    # 2) 邮箱更新（唯一性检查，允许 null）
+    # 2) Update email (uniqueness check, allow null)
     if body.email is not None and body.email != u.email:
         if body.email != "":
             email_taken = await User.filter(email=body.email).exclude(id=user_id).exists()
@@ -143,7 +220,7 @@ async def update_user(
         else:
             u.email = None
 
-    # 3) 角色更新（不能把自己降级；不能把最后一个 admin 降为 user）
+    # 3) Update role (cannot demote self; cannot demote last admin to user)
     if body.role and body.role != u.role:
         if str(current_admin.id) == str(u.id) and body.role != "admin":
             raise HTTPException(
@@ -172,18 +249,39 @@ async def delete_user(
     user_id: str,
     current_admin: User = Depends(get_current_user),
 ):
+    """
+    Delete a user account (admin only).
+    
+    Permanently deletes a user account. Includes validation to prevent
+    security issues (e.g., deleting self, deleting last admin).
+    
+    Args:
+        user_id: User UUID string to delete
+        current_admin: Current admin user (from dependency)
+    
+    Returns:
+        dict: Response containing:
+            - success: bool (always True)
+            - data: dict with ok: True
+    
+    Raises:
+        HTTPException (404): If user not found
+        HTTPException (400): If validation fails (cannot delete self, cannot delete last admin)
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     u = await User.get_or_none(id=user_id)
     if not u:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="USER_NOT_FOUND")
 
-    # 不能删除自己
+    # Cannot delete self
     if str(current_admin.id) == str(u.id):
         raise HTTPException(
             status_code=400,
             detail={"code": "CANNOT_DELETE_SELF", "message": "Cannot delete yourself"},
         )
 
-    # 不能删除最后一个 admin
+    # Cannot delete last admin
     if u.role == "admin":
         admin_count = await _count_admins()
         if admin_count <= 1:
@@ -205,6 +303,27 @@ async def reset_user_password(
     body: AdminResetPasswordIn,
     current_admin: User = Depends(get_current_user),
 ):
+    """
+    Reset a user's password (admin only).
+    
+    Allows admins to reset any user's password without knowing the current
+    password. The new password is hashed before storage.
+    
+    Args:
+        user_id: User UUID string whose password to reset
+        body: Request body containing newPassword
+        current_admin: Current admin user (from dependency)
+    
+    Returns:
+        dict: Response containing:
+            - success: bool (always True)
+            - data: dict with ok: True
+    
+    Raises:
+        HTTPException (404): If user not found
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     u = await User.get_or_none(id=user_id)
     if not u:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="USER_NOT_FOUND")
@@ -215,14 +334,14 @@ async def reset_user_password(
 
 
 # ==============================================================================
-# 二、密钥管理（批量生成、列表、详情、删除）
-#     前缀：/api/v1/admin/license-keys/*
-#     说明：不返回明文，只在生成时返回一次明文集合
+# II. Key Management (batch generation, list, detail, delete)
+#     Prefix: /api/v1/admin/license-keys/*
+#     Note: Don't return plaintext, only return plaintext collection once during generation
 # ==============================================================================
 def _make_plain_key(prefix: str = "FAT") -> str:
     """
-    生成形如 FAT-AB12-CD34-EF56-GH78 的密钥明文。
-    仅返回给前端一次；库中只保存 sha256(key)。
+    Generate plaintext key in format like FAT-AB12-CD34-EF56-GH78.
+    Only returned to frontend once; database only stores sha256(key).
     """
     alphabet = string.ascii_uppercase + string.digits
     parts = ["".join(secrets.choice(alphabet) for _ in range(4)) for __ in range(4)]
@@ -236,9 +355,31 @@ def _make_plain_key(prefix: str = "FAT") -> str:
 )
 async def batch_generate_keys(body: BatchGenerateIn):
     """
-    批量生成密钥：
-    - 入库只存 hash，不存明文
-    - 返回给前端一次性明文列表（用于导出/发放）
+    Batch generate license keys (admin only).
+    
+    Generates multiple license keys at once with the specified type, prefix,
+    and optional expiration. Keys are stored as SHA256 hashes in the database
+    for security. Plaintext keys are only returned once during generation.
+    
+    Args:
+        body: Request body containing:
+            - count: int (number of keys to generate, 1-200)
+            - keyType: str (key type, e.g., "paid", "trial")
+            - expireDays: int | None (days until expiration, None for no expiration)
+            - prefix: str | None (key prefix, default "FAT")
+    
+    Returns:
+        BatchGenerateOut: Response containing list of generated keys with plaintext
+    
+    Raises:
+        HTTPException (500): If key generation collision occurs (extremely rare)
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    
+    Note:
+        - Plaintext keys are only returned in this response, never stored in database
+        - Database stores SHA256 hash, prefix, and last 4 characters for display
+        - Each key is checked for uniqueness before creation
     """
     count = body.count
     key_type = body.keyType.strip()
@@ -251,14 +392,14 @@ async def batch_generate_keys(body: BatchGenerateIn):
     items: List[GeneratedKeyItem] = []
 
     for _ in range(count):
-    # 确保 hash 唯一
-        for __ in range(10):  # 最多尝试 10 次避免极端重复
+    # Ensure hash is unique
+        for __ in range(10):  # Try at most 10 times to avoid extreme duplicates
             plain = _make_plain_key(prefix)
             h = LicenseKey.sha256_hex(plain)
             exists = await LicenseKey.filter(key_hash=h).exists()
             if not exists:
-                # ⭐ 从明文中解析 prefix 和 后 4 位
-                # plain 形如 FAT-AB12-CD34-EF56-GH78
+                # ⭐ Parse prefix and last 4 characters from plaintext
+                # plain format like FAT-AB12-CD34-EF56-GH78
                 parts = plain.split("-")
                 key_prefix = parts[0]
                 key_suffix_last4 = parts[-1]
@@ -274,7 +415,7 @@ async def batch_generate_keys(body: BatchGenerateIn):
                 items.append(
                     GeneratedKeyItem(
                         id=str(lk.id),
-                        key=plain,  # 只在生成接口返回明文
+                        key=plain,  # Only return plaintext in generation interface
                         keyType=key_type,
                         expiresAt=lk.expires_at.isoformat() if lk.expires_at else None,
                     )
@@ -306,6 +447,29 @@ async def list_license_keys(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
 ):
+    """
+    Get paginated list of license keys (admin only).
+    
+    Returns a list of all license keys with optional filtering by usage status
+    and key type. Results are ordered by creation date (newest first).
+    
+    Args:
+        is_used: Optional filter for used/unused keys (True/False/None for all)
+        key_type: Optional filter for key type (e.g., "paid", "trial")
+        offset: Number of items to skip (for pagination)
+        limit: Maximum number of items to return (1-200)
+    
+    Returns:
+        LicenseKeyListOut: Response containing paginated key list with metadata
+    
+    Raises:
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    
+    Note:
+        Keys are displayed with masked format: "PREFIX-****-****-LAST4"
+        Plaintext keys are never returned in list responses.
+    """
     qs = LicenseKey.all().order_by("-created_at")
     if is_used is not None:
         qs = qs.filter(is_used=is_used)
@@ -324,7 +488,7 @@ async def list_license_keys(
             
             key_preview = f"{r.prefix}-****-****-{r.suffix_last4}"
         else:
-            key_preview = None  # 兼容旧数据
+            key_preview = None  # Compatible with old data
 
         items.append(
             {
@@ -336,7 +500,7 @@ async def list_license_keys(
                 "expiresAt": r.expires_at.isoformat() if r.expires_at else None,
                 "createdAt": r.created_at.isoformat() if r.created_at else None,
                 "isExpired": expired,
-                # ⭐ 新增字段：前缀 + **** + 后 4 位
+                # ⭐ New field: prefix + **** + last 4 characters
                 "keyPreview": key_preview,
             }
         )
@@ -351,6 +515,22 @@ async def list_license_keys(
     dependencies=[Depends(require_admin)],
 )
 async def get_license_key_detail(key_id: str):
+    """
+    Get detailed information about a specific license key (admin only).
+    
+    Args:
+        key_id: License key UUID string
+    
+    Returns:
+        dict: Response containing:
+            - success: bool (always True)
+            - data: dict with key details (id, keyType, isUsed, usedBy, usedAt, expiresAt, createdAt, isExpired)
+    
+    Raises:
+        HTTPException (404): If key not found
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     r = await LicenseKey.get_or_none(id=key_id)
     if not r:
         raise HTTPException(status_code=404, detail="KEY_NOT_FOUND")
@@ -375,6 +555,25 @@ async def get_license_key_detail(key_id: str):
     dependencies=[Depends(require_admin)],
 )
 async def delete_license_key(key_id: str):
+    """
+    Delete a license key (admin only).
+    
+    Permanently deletes a license key from the database. This action cannot
+    be undone. Used keys can also be deleted.
+    
+    Args:
+        key_id: License key UUID string to delete
+    
+    Returns:
+        dict: Response containing:
+            - success: bool (always True)
+            - data: dict with ok: True
+    
+    Raises:
+        HTTPException (404): If key not found
+        HTTPException (403): If user is not an admin
+        HTTPException (401): If user is not authenticated
+    """
     r = await LicenseKey.get_or_none(id=key_id)
     if not r:
         raise HTTPException(status_code=404, detail="KEY_NOT_FOUND")
@@ -383,16 +582,43 @@ async def delete_license_key(key_id: str):
 
 
 # ==============================================================================
-# 三、密钥校验（兼容前端：/api/v1/admin/verify-key）
-#     说明：
-#       - 出于兼容性，这里不强制管理员；普通用户也可调用校验/兑换
-#       - body.consume=True 时，如已登录，将记录 used_by；否则只标记使用
+# III. Key Verification (compatible with frontend: /api/v1/admin/verify-key)
+#     Notes:
+#       - For compatibility, admin not required here; regular users can also call verify/redeem
+#       - When body.consume=True, if already logged in, will record used_by; otherwise only mark as used
 # ==============================================================================
 @router.post("/verify-key")
 async def verify_key(
     body: VerifyKeyIn,
     current_user: Optional[User] = Depends(optional_current_user_dependency),
 ):
+    """
+    Verify and optionally consume a license key.
+    
+    Validates a license key and optionally marks it as used. This endpoint
+    is accessible to both authenticated and unauthenticated users (for
+    compatibility with frontend key verification flow).
+    
+    If consume=True and a user is logged in, the key's used_by field is
+    recorded. If no user is logged in, the key is still marked as used but
+    without a user association.
+    
+    Args:
+        body: Request body containing:
+            - key: str (plaintext license key to verify)
+            - consume: bool (if True, mark key as used after verification)
+        current_user: Optional authenticated user (from dependency, can be None)
+    
+    Returns:
+        dict: Response containing:
+            - success: bool (always True)
+            - data: dict with ok: bool (True if key is valid and available, False otherwise)
+    
+    Note:
+        - Returns ok=False for invalid, expired, or already-used keys
+        - Does not expose detailed error information to prevent key enumeration
+        - If consume=True, the key cannot be used again
+    """
     plain = (body.key or "").strip().upper()
     if not plain:
         return {"success": False, "error": {"code": "BAD_REQUEST", "message": "key required"}}
@@ -400,21 +626,21 @@ async def verify_key(
     h = LicenseKey.sha256_hex(plain)
     r = await LicenseKey.get_or_none(key_hash=h)
     if not r:
-        return {"success": True, "data": {"ok": False}}  # 不暴露更多信息
+        return {"success": True, "data": {"ok": False}}  # Don't expose more information
 
-    # 过期判断
+    # Expiration check
     if r.expires_at and r.expires_at <= utc_now():
         return {"success": True, "data": {"ok": False}}
 
-    # 已用判断
+    # Already used check
     if r.is_used:
         return {"success": True, "data": {"ok": False}}
 
-    # 仅校验：返回 ok=True
+    # Only verify: return ok=True
     if not body.consume:
         return {"success": True, "data": {"ok": True}}
 
-    # consume=True：标记使用；如有登录用户则记录 used_by
+    # consume=True: Mark as used; if have logged-in user then record used_by
     r.is_used = True
     r.used_at = utc_now()
     if current_user:
