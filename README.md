@@ -91,51 +91,8 @@ We treat them slightly differently for `.env.docker`:
 3. Fill in required environment variables (database URL, JWT secret, OpenAI key, ElevenLabs key, etc.).
 
    - For security reasons, **we do not commit .env.docker to GitHub**.
-   - A **sample .env.docker** is included in the **submitted ZIP** and can be copied here.
-   - **The default administrator account is "admin" and the password is also "123456". Both can be set in the ".env.docker" file.**
+   - A **sample .env.docker** is included in the **submitted ZIP** and can be copied here.For detailed information, please refer to the installation manual.
    
-   ```
-   DATABASE_URL=postgres://postgres:postgre@fat-db:5432/fat
-   ENV=dev
-   JWT_SECRET=ChangeThisToARealSecret_123456
-   ACCESS_TOKEN_EXPIRE_MINUTES=60
-   
-   USE_LOCAL_WHISPER=False
-   LOCAL_WHISPER_MODEL=small
-   STREAMING_ENABLE_VAD=true
-   STREAMING_ENABLE_DUAL_TRANSCRIPTION=true
-   WHISPER_API_URL=https://api.openai.com/v1/audio/transcriptions
-   WHISPER_MODEL=whisper-1
-   OPENAI_API_KEY=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
-   ENABLE_GPT_FORMATTING=true
-   GPT_MODEL=gpt-4o-mini
-   
-   ELEVENLABS_API_KEY=sk_e64568fcb4420c9e1f4fa6de905a96aca6face4d2087fdf3
-   
-   VOICE_ID_AMERICAN=PsEYifg5ra2YMbPGwhb3
-   VOICE_ID_AUSTRALIA=WLKp2jV6nrS8aMkPPDRO
-   VOICE_ID_BRITISH=lUTamkMw7gOzZbFIwmq4
-   VOICE_ID_CHINESE=gAMZphRyrWJnLMDnom6H
-   VOICE_ID_INDIA=oH8YmZXJYEZq5ScgoGn9
-   
-   HOST=0.0.0.0
-   PORT=8000
-   
-   
-   ENABLE_DIARIZATION=true
-   DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
-   HF_TOKEN=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 
-   
-   JWT_SECRET=your-secret-key-here
-   JWT_ALGORITHM=HS256
-   JWT_EXPIRE_MINUTES=60
-   
-   # Admin user credentials
-   ADMIN_USERNAME=admin
-   ADMIN_EMAIL=admin@123.com
-   ADMIN_PASSWORD=123456
-   CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-   ```
 
 > In the **ZIP submission**, `.env.docker` is already included.
 >  When running from the ZIP, you can directly use that file (or tweak values if needed).
