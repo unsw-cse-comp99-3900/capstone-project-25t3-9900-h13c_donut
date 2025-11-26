@@ -1,6 +1,6 @@
 # Testing
 
-> **📖 For detailed testing instructions, see [TESTING.md](TESTING.md)**
+> **For detailed testing instructions, see [TESTING.md](TESTING.md)**
 
 The [TESTING.md](TESTING.md) guide provides comprehensive instructions on:
 - How to run frontend and backend tests
@@ -51,7 +51,7 @@ browser-specific parts are covered via manual system tests instead of full autom
   - Core logic is exercised indirectly through the `/api/v1/tts/synthesize` endpoint with TTS backends mocked  
   - Real external calls to ElevenLabs are verified manually (see System / End-to-end Testing)
 
-**📖 For detailed testing instructions, see [TESTING.md](tests\backend\TESTING_BE.MD)**
+**For detailed testing instructions, see [TESTING.md](tests\backend\TESTING_BE.MD)**
 ---
 
 **Frontend – what is covered**
@@ -75,7 +75,7 @@ browser-specific parts are covered via manual system tests instead of full autom
   - These are not fully automated in tests  
   - In automated tests, browser APIs and WebSocket clients are mocked; we only verify component state and UI responses  
   - Full real-time flows are covered via manual scenarios described below
-**📖 For detailed testing instructions, see [TESTING.md](tests\frontend\TESTING_FE.md)**
+**For detailed testing instructions, see [TESTING.md](tests\frontend\TESTING_FE.md)**
 ---
 
 ### System / End-to-end Testing (Manual)
