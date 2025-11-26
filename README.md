@@ -158,7 +158,7 @@ docker compose down -v
 
 ## 6. First Run Notes (Important)
 
-The very first time you build and run the system, it usually takes **25–30 minutes** to complete:
+The very first time you build and run the system, it usually takes **25–30 minutes** to complete,Please wait patiently:
 
 1. **During startup**
     Wait until the backend outputs the message:
@@ -171,13 +171,13 @@ The very first time you build and run the system, it usually takes **25–30 min
 
 2. **First use of the Free (CPU) Speech Model**
     The very first invocation of speech recording (microphone icon) will trigger the loading of the free ASR/TTS models.
-    This loading step can take **a few seconds up to a few minutes**, depending on your CPU performance.
+    This loading step can take **a few seconds up to a few minutes**, depending on your CPU performance,Please wait patiently.
 
    **Recommended usage for the first time:**
 
    - Click the **microphone button**
    - Speak **one short sentence**
-   - Wait until you hear the generated speech
+   - Wait until you hear the voice finish playing
    - Click the microphone button again to stop recording
 
 3. After the first successful inference, the models are cached and subsequent interactions will be fast and smooth.
