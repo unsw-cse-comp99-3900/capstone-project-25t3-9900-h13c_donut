@@ -6,7 +6,7 @@ dist/
 Thumbs.db
 
 # Testing & Coverage Reports
-# Backend test coverage
+# Backend test coverage (in backend directory - legacy)
 backend/htmlcov/
 backend/.pytest_cache/
 backend/.coverage
@@ -16,20 +16,23 @@ backend/coverage.json
 backend/.coverage.*
 backend/.cache/
 
-# # Backend test code
-# backend/tests/
+# Backend test coverage (in tests/backend directory)
+tests/backend/htmlcov/
+tests/backend/.pytest_cache/
+tests/backend/.coverage
+tests/backend/*.coverage
+tests/backend/coverage.xml
+tests/backend/coverage.json
+tests/backend/.coverage.*
 
 # Frontend test coverage
 frontend/coverage/
 frontend/.vitest/
 frontend/.vite/
+tests/frontend/coverage/
+tests/frontend/.vitest/
 
-# # Frontend test code
-# frontend/src/**/__tests__/
-# frontend/src/test/
-# frontend/TESTING.md
-
-# Test artifacts
+# Test artifacts (general)
 *.log
 .pytest_cache/
 .coverage
