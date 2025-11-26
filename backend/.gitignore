@@ -1,6 +1,6 @@
 # env & secrets
 .env
-.docker
+.env.docker
 *.pem
 *.key
 

@@ -1,4 +1,4 @@
-# 1) Base image with CUDA 11.8 + PyTorch 2.1.2
+# 1) Base image with python3.11
 FROM python:3.11-slim
 
 ENV TZ=Australia/Sydney \
@@ -21,9 +21,12 @@ WORKDIR /app
 # 3) Pre-copy requirements
 COPY requirements.txt .
 
-# 4) Install torch GPU first, then other deps
-RUN pip install --no-cache-dir -r requirements.txt && \
-    python -m nltk.downloader averaged_perceptron_tagger_eng -d /usr/local/nltk_data
+# 4) Install torch 
+RUN pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch==2.1.2" "torchaudio==2.1.2" \
+    && pip install --no-cache-dir -r requirements.txt \
+    && python -m nltk.downloader averaged_perceptron_tagger_eng -d /usr/local/nltk_data
 # 5) Copy project (excluding models via .dockerignore)
 COPY . .
 
