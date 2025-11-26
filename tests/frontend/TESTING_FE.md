@@ -1,4 +1,3 @@
-**Frontend – what is covered**
 **Frontend Feature-to-Test Mapping**
 
 | Feature / Capability                                             | Main Implementation (Frontend)                                                                 | Automated Tests (Frontend)                                                                                                      | Manual / System Tests                                                                                     |
@@ -10,7 +9,7 @@
 | Form validation utilities (email, password rules, etc.)          | `frontend/src/utils/validators.js`                                                              | `tests/frontend/utils/validators.test.js` (validation for various valid and invalid inputs)                                     | Indirectly covered by the Login / Register / Forgot Password page tests; relevant to `TESTING.md` Scenarios **1 / 5** |
 | Reusable UI components (e.g., message list / chat bubble)        | `frontend/src/components/MessageBox.jsx` and other shared components                            | `tests/frontend/components/MessageBox.test.jsx` (different message types, rendering order, empty states, styling expectations) | Visual behaviour observed across all manual scenarios; especially `TESTING.md` Scenarios **2 / 3** (displaying translated messages in real time) |
 
-
+**Frontend – what is covered**
 We have implemented comprehensive testing for the frontend:
 
 **Component-level tests**
